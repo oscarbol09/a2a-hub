@@ -10,6 +10,9 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 
 @Component
 public class ApiKeyAuthFilter extends OncePerRequestFilter {
@@ -17,6 +20,12 @@ public class ApiKeyAuthFilter extends OncePerRequestFilter {
     private static final String API_KEY_HEADER = "X-API-Key";
     private static final String AUTH_HEADER = "Authorization";
     private static final String BEARER_PREFIX = "Bearer ";
+
+    private static final List<String> PUBLIC_ENDPOINTS = List.of(
+            "/v3/api-docs",
+            "/swagger-ui"
+    );
+    private static final Set<String> MUTATING_METHODS = Set.of("POST", "PUT", "DELETE", "PATCH");
 
     private final SecurityProperties securityProperties;
 
@@ -64,18 +73,27 @@ public class ApiKeyAuthFilter extends OncePerRequestFilter {
     }
 
     private boolean isProtectedEndpoint(String path, String method) {
-        // Mutating operations always require auth if a key is configured
-        if ((path.startsWith("/api/v1/agents") || path.startsWith("/api/v1/tasks"))
-                && ("POST".equalsIgnoreCase(method) || "DELETE".equalsIgnoreCase(method) || "PUT".equalsIgnoreCase(method) || "PATCH".equalsIgnoreCase(method))) {
-            return true;
+        if (isPublicPath(path) || isOutsideApi(path) || isOpenRead(method)) {
+            return false;
         }
 
-        // Optional full protection of read endpoints
-        if (securityProperties.isRequireAuthForReads() && path.startsWith("/api/v1")) {
-            return true;
-        }
+        return true;
+    }
 
-        return false;
+    private boolean isPublicPath(String path) {
+        return PUBLIC_ENDPOINTS.stream().anyMatch(path::startsWith);
+    }
+
+    private boolean isOutsideApi(String path) {
+        return !path.startsWith("/api/");
+    }
+
+    private boolean isOpenRead(String method) {
+        return !securityProperties.isRequireAuthForReads() && !isWriteMethod(method);
+    }
+
+    private boolean isWriteMethod(String method) {
+        return MUTATING_METHODS.contains(method.toUpperCase(Locale.ROOT));
     }
 
     private String extractApiKey(HttpServletRequest request) {
