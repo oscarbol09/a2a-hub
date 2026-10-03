@@ -5,6 +5,8 @@ import jakarta.servlet.ServletException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 
@@ -102,6 +104,77 @@ class ApiKeyAuthFilterTest {
         securityProperties.setApiKey("secret-token-123");
 
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/tasks");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilterInternal(request, response, filterChain);
+
+        verify(filterChain, never()).doFilter(request, response);
+        assertThat(response.getStatus()).isEqualTo(401);
+    }
+
+    @ParameterizedTest(name = "GET {0} (requireAuthForReads={1}) should bypass auth")
+    @CsvSource({
+            "/v3/api-docs,                true",
+            "/v3/api-docs/swagger-config, true",
+            "/swagger-ui.html,            true",
+            "/swagger-ui/index.html,      true",
+            "/v3/api-docs,                false",
+            "/swagger-ui/index.html,      false"
+    })
+    @DisplayName("Should let OpenAPI docs and Swagger UI bypass auth when an API key is configured")
+    void shouldBypassAuthForApiDocs(String path, boolean requireAuthForReads) throws ServletException, IOException {
+        // given
+        securityProperties.setApiKey("secret-token-123");
+        securityProperties.setRequireAuthForReads(requireAuthForReads);
+
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", path);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        // when
+        filter.doFilterInternal(request, response, filterChain);
+
+        // then
+        verify(filterChain).doFilter(request, response);
+        assertThat(response.getStatus()).isEqualTo(200);
+    }
+
+    @Test
+    @DisplayName("Should block unauthenticated GET when requireAuthForReads is true")
+    void shouldBlockReadsWhenRequireAuthForReads() throws ServletException, IOException {
+        securityProperties.setApiKey("secret-token-123");
+        securityProperties.setRequireAuthForReads(true);
+
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/agents");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilterInternal(request, response, filterChain);
+
+        verify(filterChain, never()).doFilter(request, response);
+        assertThat(response.getStatus()).isEqualTo(401);
+    }
+
+    @Test
+    @DisplayName("Should allow GET with valid API key when requireAuthForReads is true")
+    void shouldAllowReadsWithValidKeyWhenRequireAuthForReads() throws ServletException, IOException {
+        securityProperties.setApiKey("secret-token-123");
+        securityProperties.setRequireAuthForReads(true);
+
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/agents");
+        request.addHeader("X-API-Key", "secret-token-123");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilterInternal(request, response, filterChain);
+
+        verify(filterChain).doFilter(request, response);
+    }
+
+    @Test
+    @DisplayName("Should block request with invalid API key")
+    void shouldBlockInvalidApiKey() throws ServletException, IOException {
+        securityProperties.setApiKey("secret-token-123");
+
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/agents");
+        request.addHeader("X-API-Key", "wrong-key");
         MockHttpServletResponse response = new MockHttpServletResponse();
 
         filter.doFilterInternal(request, response, filterChain);

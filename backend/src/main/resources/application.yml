@@ -4,6 +4,7 @@ server:
 spring:
   application:
     name: a2a-hub
+    version: 0.0.1
 
   threads:
     virtual:
@@ -38,6 +39,12 @@ a2ahub:
     api-key: ${GEMINI_API_KEY:}
   health-monitor:
     interval-ms: ${A2A_HUB_HEALTH_INTERVAL_MS:60000}
+
+springdoc:
+  api-docs:
+    enabled: ${A2A_HUB_ENABLE_API_DOCS:true}
+  swagger-ui:
+    enabled: ${A2A_HUB_ENABLE_SWAGGER_UI:true}
 
 logging:
   level:
