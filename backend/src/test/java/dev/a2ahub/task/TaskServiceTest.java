@@ -1,6 +1,7 @@
 package dev.a2ahub.task;
 
 import dev.a2ahub.agent.Agent;
+import dev.a2ahub.agent.AgentNotFoundException;
 import dev.a2ahub.agent.AgentRepository;
 import dev.a2ahub.events.AgentEventPublisher;
 import dev.a2ahub.security.SsrfValidator;
@@ -79,6 +80,25 @@ class TaskServiceTest {
         assertThatThrownBy(() -> taskService.submitTask(request))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("OFFLINE");
+    }
+
+    @Test
+    @DisplayName("Should throw when submitting a task to a non-existent agent")
+    void shouldThrowWhenSubmittingTaskToMissingAgent() {
+        UUID agentId = UUID.randomUUID();
+        when(agentRepository.findById(agentId)).thenReturn(Optional.empty());
+
+        TaskService.SubmitTaskRequest request = new TaskService.SubmitTaskRequest(
+                agentId,
+                "ctx-missing-agent",
+                Map.of("query", "test")
+        );
+
+        assertThatThrownBy(() -> taskService.submitTask(request))
+                .isInstanceOf(AgentNotFoundException.class)
+                .hasMessage("Agent not found with ID: " + agentId);
+
+        verify(taskRepository, never()).save(any());
     }
 
     @Test

@@ -1,6 +1,7 @@
 package dev.a2ahub.task;
 
 import dev.a2ahub.agent.Agent;
+import dev.a2ahub.agent.AgentNotFoundException;
 import dev.a2ahub.agent.AgentRepository;
 import dev.a2ahub.events.AgentEventPublisher;
 import dev.a2ahub.security.SsrfValidator;
@@ -50,7 +51,7 @@ public class TaskService {
         }
 
         Agent agent = agentRepository.findById(submitRequest.agentId())
-                .orElseThrow(() -> new IllegalArgumentException("Agent not found with ID: " + submitRequest.agentId()));
+                .orElseThrow(() -> new AgentNotFoundException("Agent not found with ID: " + submitRequest.agentId()));
 
         if ("OFFLINE".equalsIgnoreCase(agent.getStatus())) {
             throw new IllegalStateException("Target agent " + agent.getName() + " is currently OFFLINE");

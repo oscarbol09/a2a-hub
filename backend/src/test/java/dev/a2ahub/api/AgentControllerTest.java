@@ -2,6 +2,7 @@ package dev.a2ahub.api;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.a2ahub.agent.Agent;
+import dev.a2ahub.agent.AgentNotFoundException;
 import dev.a2ahub.agent.AgentRegistryService;
 import dev.a2ahub.agent.RegisterAgentRequest;
 import dev.a2ahub.security.ApiKeyAuthFilter;
@@ -115,16 +116,19 @@ class AgentControllerTest {
     }
 
     @Test
-    @DisplayName("GET /api/v1/agents/{id} - Should return 400 when agent not found")
-    void shouldReturn400WhenAgentNotFound() throws Exception {
+    @DisplayName("GET /api/v1/agents/{id} - Should return 404 ProblemDetail when agent not found")
+    void shouldReturn404WhenAgentNotFound() throws Exception {
         UUID nonExistentId = UUID.randomUUID();
         when(agentRegistryService.findById(nonExistentId))
-                .thenThrow(new IllegalArgumentException("Agent not found with ID: " + nonExistentId));
+                .thenThrow(new AgentNotFoundException("Agent not found with ID: " + nonExistentId));
 
         mockMvc.perform(get("/api/v1/agents/{id}", nonExistentId))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("Bad Request"))
-                .andExpect(jsonPath("$.message").value("Agent not found with ID: " + nonExistentId));
+                .andExpect(status().isNotFound())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.type").value("about:blank"))
+                .andExpect(jsonPath("$.status").value(404))
+                .andExpect(jsonPath("$.title").value("Not Found"))
+                .andExpect(jsonPath("$.detail").value("Agent not found with ID: " + nonExistentId));
     }
 
     @Test

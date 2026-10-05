@@ -126,7 +126,7 @@ public class AgentRegistryService {
 
     public Agent findById(UUID id) {
         return agentRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Agent not found with ID: " + id));
+                .orElseThrow(() -> new AgentNotFoundException("Agent not found with ID: " + id));
     }
 
     @Transactional

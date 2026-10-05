@@ -1,6 +1,7 @@
 package dev.a2ahub.api;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import dev.a2ahub.agent.AgentNotFoundException;
 import dev.a2ahub.security.ApiKeyAuthFilter;
 import dev.a2ahub.security.SecurityProperties;
 import dev.a2ahub.task.TaskService;
@@ -76,6 +77,29 @@ class TaskControllerTest {
                 .andExpect(jsonPath("$.contextId").value("ctx-123"));
 
         verify(taskService).submitTask(any(TaskService.SubmitTaskRequest.class));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/tasks - Should return 404 ProblemDetail when agent not found")
+    void shouldReturn404WhenSubmittingTaskToMissingAgent() throws Exception {
+        UUID agentId = UUID.randomUUID();
+        TaskService.SubmitTaskRequest request = new TaskService.SubmitTaskRequest(
+                agentId,
+                "ctx-missing-agent",
+                Map.of("message", "hello agent")
+        );
+
+        when(taskService.submitTask(any(TaskService.SubmitTaskRequest.class)))
+                .thenThrow(new AgentNotFoundException("Agent not found with ID: " + agentId));
+
+        mockMvc.perform(post("/api/v1/tasks")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.type").value("about:blank"))
+                .andExpect(jsonPath("$.status").value(404))
+                .andExpect(jsonPath("$.title").value("Not Found"))
+                .andExpect(jsonPath("$.detail").value("Agent not found with ID: " + agentId));
     }
 
     @Test

@@ -145,7 +145,7 @@ class AgentRegistryServiceTest {
         when(agentRepository.findById(id)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> agentRegistryService.findById(id))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(AgentNotFoundException.class)
                 .hasMessageContaining("Agent not found with ID");
     }
 
