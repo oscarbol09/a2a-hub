@@ -233,15 +233,20 @@ describe('AgentCard Component', () => {
       vi.useRealTimers();
     });
 
-    it('navigates to agent detail view when root card is clicked', async () => {
+    it('navigates to agent detail view when root card is clicked or activated via keyboard (Enter/Space)', async () => {
       const wrapper = mount(AgentCard, {
         props: { agent: baseAgentFixture },
       });
 
       await wrapper.trigger('click');
-
       expect(mockPush).toHaveBeenCalledTimes(1);
       expect(mockPush).toHaveBeenCalledWith(`/agents/${baseAgentFixture.id}`);
+
+      await wrapper.trigger('keydown.enter');
+      expect(mockPush).toHaveBeenCalledTimes(2);
+
+      await wrapper.trigger('keydown.space');
+      expect(mockPush).toHaveBeenCalledTimes(3);
     });
 
     it('dispatches quick probe event, triggers loading spinner state, and resets after timeout', async () => {
@@ -249,7 +254,7 @@ describe('AgentCard Component', () => {
         props: { agent: baseAgentFixture },
       });
 
-      const probeBtn = wrapper.find('button[title="Probe health now"]');
+      const probeBtn = wrapper.find(`button[title="Probe health for ${baseAgentFixture.name}"]`);
       expect(probeBtn.attributes('disabled')).toBeUndefined();
 
       await probeBtn.trigger('click');
@@ -280,7 +285,7 @@ describe('AgentCard Component', () => {
         props: { agent: baseAgentFixture },
       });
 
-      const unregisterBtn = wrapper.find('button[title="Unregister Agent"]');
+      const unregisterBtn = wrapper.find(`button[title="Unregister ${baseAgentFixture.name}"]`);
       expect(unregisterBtn.exists()).toBe(true);
 
       await unregisterBtn.trigger('click');

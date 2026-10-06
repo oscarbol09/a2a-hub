@@ -120,19 +120,29 @@ const handleRegister = async () => {
     </div>
 
     <!-- Register Modal -->
-    <div v-if="showRegisterModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div class="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden">
+    <div
+      v-if="showRegisterModal"
+      class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="register-modal-title"
+      @keydown.esc="showRegisterModal = false"
+      @click.self="showRegisterModal = false"
+    >
+      <div class="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden" role="document">
         <div class="px-6 py-4 border-b border-gray-100">
-          <h3 class="text-lg font-semibold text-gray-900">Register New Agent</h3>
+          <h2 id="register-modal-title" class="text-lg font-semibold text-gray-900">Register New Agent</h2>
         </div>
         <div class="p-6">
-          <label class="block text-sm font-medium text-gray-700 mb-2">Agent URL</label>
+          <label for="agent-url-input" class="block text-sm font-medium text-gray-700 mb-2">Agent URL</label>
           <input 
+            id="agent-url-input"
             v-model="newAgentUrl"
             type="url" 
             placeholder="https://api.example.com/agent"
             class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-shadow text-sm"
             @keyup.enter="handleRegister"
+            autofocus
           />
           <p class="text-xs text-gray-500 mt-2">
             The hub will fetch the agent's capabilities from <code class="bg-gray-100 px-1 py-0.5 rounded font-mono">/.well-known/agent-card.json</code>
@@ -140,17 +150,19 @@ const handleRegister = async () => {
         </div>
         <div class="px-6 py-4 bg-gray-50 flex justify-end gap-3">
           <button 
+            type="button"
             @click="showRegisterModal = false"
             class="px-4 py-2 text-gray-700 hover:bg-gray-200 rounded-lg font-medium text-sm transition-colors cursor-pointer"
           >
             Cancel
           </button>
           <button 
+            type="button"
             @click="handleRegister"
             :disabled="store.loading || !newAgentUrl"
             class="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg font-medium text-sm transition-colors flex items-center gap-2 cursor-pointer shadow-sm"
           >
-            <span v-if="store.loading" class="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></span>
+            <span v-if="store.loading" class="animate-spin rounded-full h-4 w-4 border-b-2 border-white" aria-hidden="true"></span>
             Register
           </button>
         </div>

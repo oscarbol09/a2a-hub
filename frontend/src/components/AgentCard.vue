@@ -96,12 +96,17 @@ defineExpose({
 <template>
   <div
     @click="goToDetail"
-    class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-md hover:border-blue-300 transition-all group flex flex-col cursor-pointer"
+    @keydown.enter="goToDetail"
+    @keydown.space.prevent="goToDetail"
+    tabindex="0"
+    role="button"
+    :aria-label="'View details for ' + agent.name"
+    class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-md hover:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all group flex flex-col cursor-pointer"
   >
     <!-- Header -->
     <div class="p-5 border-b border-gray-100 flex justify-between items-start">
       <div class="flex gap-3">
-        <div class="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+        <div class="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 group-hover:bg-blue-600 group-hover:text-white transition-colors" aria-hidden="true">
           <Bot class="w-6 h-6" />
         </div>
         <div>
@@ -109,7 +114,7 @@ defineExpose({
             <h3 class="font-semibold text-gray-900 leading-tight group-hover:text-blue-600 transition-colors">
               {{ agent.name }}
             </h3>
-            <ArrowUpRight class="w-3.5 h-3.5 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+            <ArrowUpRight class="w-3.5 h-3.5 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" aria-hidden="true" />
           </div>
           <p class="text-xs text-gray-500 mt-1 font-mono truncate max-w-[190px]" :title="agent.url">
             {{ agent.url }}
@@ -122,8 +127,9 @@ defineExpose({
         <div
           class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border"
           :class="[statusBgClass, statusTextClass]"
+          :aria-label="'Agent status: ' + agent.status"
         >
-          <span class="relative flex h-2 w-2">
+          <span class="relative flex h-2 w-2" aria-hidden="true">
             <span
               v-if="agent.status === 'HEALTHY' || agent.status === 'DEGRADED'"
               class="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75"
@@ -133,7 +139,7 @@ defineExpose({
           </span>
           <span>{{ agent.status }}</span>
         </div>
-        <span v-if="agent.latencyMs !== undefined" class="text-[10px] text-gray-400 font-mono">
+        <span v-if="agent.latencyMs !== undefined" class="text-[10px] text-gray-400 font-mono" :aria-label="'Latency ' + agent.latencyMs + ' milliseconds'">
           {{ agent.latencyMs }}ms
         </span>
       </div>
@@ -190,21 +196,23 @@ defineExpose({
         <span>{{ formattedTimestamp }}</span>
       </div>
 
-      <div class="flex items-center gap-2" @click.stop>
+      <div class="flex items-center gap-2" @click.stop @keydown.stop>
         <button
           @click="handleQuickProbe"
           :disabled="probing"
-          class="text-gray-400 hover:text-blue-600 transition-colors p-1 rounded hover:bg-gray-100 disabled:opacity-50"
-          title="Probe health now"
+          class="text-gray-400 hover:text-blue-600 transition-colors p-1.5 rounded-lg hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+          :title="'Probe health for ' + agent.name"
+          :aria-label="'Probe health for ' + agent.name"
         >
-          <RefreshCw class="w-3.5 h-3.5" :class="{ 'animate-spin text-blue-600': probing }" />
+          <RefreshCw class="w-3.5 h-3.5" :class="{ 'animate-spin text-blue-600': probing }" aria-hidden="true" />
         </button>
         <button
           @click="$emit('unregister')"
-          class="text-gray-400 hover:text-rose-600 transition-colors p-1 rounded hover:bg-gray-100"
-          title="Unregister Agent"
+          class="text-gray-400 hover:text-rose-600 transition-colors p-1.5 rounded-lg hover:bg-rose-50 focus:outline-none focus:ring-2 focus:ring-rose-500"
+          :title="'Unregister ' + agent.name"
+          :aria-label="'Unregister ' + agent.name"
         >
-          <Trash2 class="w-3.5 h-3.5" />
+          <Trash2 class="w-3.5 h-3.5" aria-hidden="true" />
         </button>
       </div>
     </div>
