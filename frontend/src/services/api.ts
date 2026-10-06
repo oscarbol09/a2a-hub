@@ -97,6 +97,13 @@ export interface AgentStatusEvent {
   message: string;
 }
 
+export const agentsApi = {
+  getAll: (page = 0, size = 50) => api.get<Agent[]>('/agents', { params: { page, size } }),
+  getById: (id: string) => api.get<Agent>(`/agents/${id}`),
+  register: (url: string) => api.post<Agent>('/agents', { url }),
+  unregister: (id: string) => api.delete(`/agents/${id}`)
+};
+
 export const discoveryApi = {
   discover: (params: DiscoverParams) => api.get<Agent[]>('/discover', { params }),
   getSkills: () => api.get<SkillSummary[]>('/skills'),

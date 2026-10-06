@@ -84,8 +84,11 @@ const statusBadge = computed(() => {
   }
 });
 
-onMounted(() => {
-  fetchHealthHistory();
+onMounted(async () => {
+  await fetchHealthHistory();
+  if (!agent.value) {
+    await store.fetchAgentById(agentId);
+  }
 });
 
 defineExpose({

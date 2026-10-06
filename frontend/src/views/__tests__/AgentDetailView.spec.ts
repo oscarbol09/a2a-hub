@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import AgentDetailView from '../AgentDetailView.vue';
-import { healthApi, type AgentHealthResponse, type Agent } from '../../services/api';
+import { healthApi, api, type AgentHealthResponse, type Agent } from '../../services/api';
 import { useAgentStore } from '../../stores/agentStore';
 
 const mockPush = vi.fn();
@@ -73,6 +73,12 @@ describe('AgentDetailView Component', () => {
   beforeEach(() => {
     setActivePinia(createPinia());
     vi.clearAllMocks();
+    vi.spyOn(api, 'get').mockImplementation(async (url: string) => {
+      if (url === '/agents/agent-123') {
+        return { data: mockAgentFixture } as any;
+      }
+      return { data: [] } as any;
+    });
   });
 
   describe('Initial Health Telemetry & Header Presentation', () => {

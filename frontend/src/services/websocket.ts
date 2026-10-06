@@ -2,10 +2,12 @@ import { Client, type IMessage } from '@stomp/stompjs';
 import type { AgentStatusEvent } from './api';
 
 export type StatusEventHandler = (event: AgentStatusEvent) => void;
+export type ConnectionEventHandler = (connected: boolean) => void;
 
 export class WebSocketService {
   private client: Client | null = null;
   private listeners: StatusEventHandler[] = [];
+  private connectionListeners: ConnectionEventHandler[] = [];
   public isConnected = false;
 
   public connect(brokerUrl?: string) {
@@ -24,6 +26,7 @@ export class WebSocketService {
       heartbeatOutgoing: 10000,
       onConnect: () => {
         this.isConnected = true;
+        this.notifyConnectionListeners(true);
         console.log('[WebSocket] Connected to A2A Hub broker at:', targetUrl);
 
         this.client?.subscribe('/topic/agents/status', (message: IMessage) => {
@@ -37,9 +40,12 @@ export class WebSocketService {
       },
       onDisconnect: () => {
         this.isConnected = false;
+        this.notifyConnectionListeners(false);
         console.log('[WebSocket] Disconnected from broker');
       },
       onStompError: frame => {
+        this.isConnected = false;
+        this.notifyConnectionListeners(false);
         console.error('[WebSocket] STOMP Broker error:', frame.headers['message'], frame.body);
       }
     });
@@ -54,10 +60,24 @@ export class WebSocketService {
     };
   }
 
+  public onConnectionChange(callback: ConnectionEventHandler) {
+    this.connectionListeners.push(callback);
+    // Emit immediate current state
+    callback(this.isConnected);
+    return () => {
+      this.connectionListeners = this.connectionListeners.filter(l => l !== callback);
+    };
+  }
+
+  private notifyConnectionListeners(status: boolean) {
+    this.connectionListeners.forEach(fn => fn(status));
+  }
+
   public disconnect() {
     if (this.client) {
       this.client.deactivate();
       this.isConnected = false;
+      this.notifyConnectionListeners(false);
     }
   }
 }

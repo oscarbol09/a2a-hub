@@ -24,6 +24,22 @@ export const useAgentStore = defineStore('agents', () => {
     }
   };
 
+  const fetchAgentById = async (id: string) => {
+    try {
+      const response = await api.get<Agent>(`/agents/${id}`);
+      const index = agents.value.findIndex(a => a.id === id);
+      if (index >= 0) {
+        agents.value[index] = response.data;
+      } else {
+        agents.value.push(response.data);
+      }
+      return response.data;
+    } catch (err: any) {
+      console.warn(`Failed to fetch agent ${id}:`, err);
+      return null;
+    }
+  };
+
   const fetchHubStats = async () => {
     try {
       const res = await healthApi.getStats();
@@ -76,7 +92,18 @@ export const useAgentStore = defineStore('agents', () => {
     }
   };
 
+  let wsInitialized = false;
+
   const initWebSocket = () => {
+    if (wsInitialized) {
+      return;
+    }
+    wsInitialized = true;
+
+    wsService.onConnectionChange(connected => {
+      wsConnected.value = connected;
+    });
+
     wsService.connect();
     wsConnected.value = wsService.isConnected;
 
@@ -107,6 +134,7 @@ export const useAgentStore = defineStore('agents', () => {
     wsConnected,
     recentEvents,
     fetchAgents,
+    fetchAgentById,
     fetchHubStats,
     registerAgent,
     unregisterAgent,

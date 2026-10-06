@@ -272,6 +272,24 @@ describe('WebSocketService', () => {
 
       consoleSpy.mockRestore();
     });
+
+    it('notifies connection listeners on connect and disconnect', () => {
+      const listener = vi.fn();
+      const unsubscribe = service.onConnectionChange(listener);
+
+      expect(listener).toHaveBeenCalledWith(false);
+
+      service.connect('ws://localhost:8080/ws');
+      capturedClientOptions.onConnect();
+      expect(listener).toHaveBeenCalledWith(true);
+
+      capturedClientOptions.onDisconnect();
+      expect(listener).toHaveBeenCalledWith(false);
+
+      unsubscribe();
+      capturedClientOptions.onConnect();
+      expect(listener).toHaveBeenCalledTimes(3);
+    });
   });
 
   describe('Singleton wsService Instance', () => {
@@ -280,6 +298,7 @@ describe('WebSocketService', () => {
       expect(typeof wsService.connect).toBe('function');
       expect(typeof wsService.disconnect).toBe('function');
       expect(typeof wsService.onStatusChange).toBe('function');
+      expect(typeof wsService.onConnectionChange).toBe('function');
     });
   });
 });
