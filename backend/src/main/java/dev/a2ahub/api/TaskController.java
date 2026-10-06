@@ -1,6 +1,7 @@
 package dev.a2ahub.api;
 
 import dev.a2ahub.task.TaskService;
+import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
@@ -19,7 +20,7 @@ public class TaskController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public TaskService.TaskDto submitTask(@RequestBody TaskService.SubmitTaskRequest request) {
+    public TaskService.TaskDto submitTask(@RequestBody @Valid TaskService.SubmitTaskRequest request) {
         return taskService.submitTask(request);
     }
 

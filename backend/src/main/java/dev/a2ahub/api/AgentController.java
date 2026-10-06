@@ -1,7 +1,7 @@
 package dev.a2ahub.api;
 
-import dev.a2ahub.agent.Agent;
 import dev.a2ahub.agent.AgentRegistryService;
+import dev.a2ahub.agent.AgentResponse;
 import dev.a2ahub.agent.RegisterAgentRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -22,21 +22,23 @@ public class AgentController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public Agent register(@RequestBody @Valid RegisterAgentRequest request) {
-        return agentRegistryService.register(request.url());
+    public AgentResponse register(@RequestBody @Valid RegisterAgentRequest request) {
+        return AgentResponse.fromEntity(agentRegistryService.register(request.url()));
     }
 
     @GetMapping
-    public List<Agent> getAllAgents(
+    public List<AgentResponse> getAllAgents(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "50") int size
     ) {
-        return agentRegistryService.findAll(page, size);
+        return agentRegistryService.findAll(page, size).stream()
+                .map(AgentResponse::fromEntity)
+                .toList();
     }
 
     @GetMapping("/{id}")
-    public Agent getAgent(@PathVariable UUID id) {
-        return agentRegistryService.findById(id);
+    public AgentResponse getAgent(@PathVariable UUID id) {
+        return AgentResponse.fromEntity(agentRegistryService.findById(id));
     }
 
     @DeleteMapping("/{id}")

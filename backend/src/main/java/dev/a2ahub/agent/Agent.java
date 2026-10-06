@@ -40,7 +40,6 @@ public class Agent {
 
     @Convert(converter = dev.a2ahub.security.AesGcmAttributeConverter.class)
     @Column(name = "auth_token_enc")
-    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.WRITE_ONLY)
     private String authTokenEnc;
 
     @JdbcTypeCode(SqlTypes.JSON)

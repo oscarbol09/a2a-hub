@@ -30,4 +30,9 @@ public class ArchitectureFitnessTest {
     static final ArchRule repositoriesShouldBeInterfaces = classes()
             .that().haveSimpleNameEndingWith("Repository")
             .should().beInterfaces();
+
+    @ArchTest
+    static final ArchRule controllersShouldNotDependOnRepositories = noClasses()
+            .that().resideInAPackage("..api..")
+            .should().dependOnClassesThat().haveSimpleNameEndingWith("Repository");
 }

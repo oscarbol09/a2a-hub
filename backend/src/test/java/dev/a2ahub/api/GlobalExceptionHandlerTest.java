@@ -36,34 +36,37 @@ class GlobalExceptionHandlerTest {
 
         assertThat(problem.getStatus()).isEqualTo(HttpStatus.NOT_FOUND.value());
         assertThat(problem.getDetail()).isEqualTo("Agent not found with id: " + agentId);
+        assertThat(problem.getTitle()).isEqualTo("Not Found");
     }
 
     @Test
-    @DisplayName("Should translate IllegalArgumentException to 400 Bad Request error map")
+    @DisplayName("Should translate IllegalArgumentException to RFC 7807 ProblemDetail with 400 Bad Request")
     void shouldHandleIllegalArgument() {
         IllegalArgumentException ex = new IllegalArgumentException("Invalid URI scheme provided");
 
-        Map<String, String> response = exceptionHandler.handleIllegalArgument(ex);
+        ProblemDetail problem = exceptionHandler.handleIllegalArgument(ex);
 
-        assertThat(response)
-                .containsEntry("error", "Bad Request")
-                .containsEntry("message", "Invalid URI scheme provided");
+        assertThat(problem.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST.value());
+        assertThat(problem.getDetail()).isEqualTo("Invalid URI scheme provided");
+        assertThat(problem.getTitle()).isEqualTo("Bad Request");
+        assertThat(problem.getProperties()).containsEntry("error", "Bad Request");
     }
 
     @Test
-    @DisplayName("Should translate IllegalStateException to 409 Conflict error map")
+    @DisplayName("Should translate IllegalStateException to RFC 7807 ProblemDetail with 409 Conflict")
     void shouldHandleIllegalState() {
         IllegalStateException ex = new IllegalStateException("Task is already in terminal COMPLETED state");
 
-        Map<String, String> response = exceptionHandler.handleIllegalState(ex);
+        ProblemDetail problem = exceptionHandler.handleIllegalState(ex);
 
-        assertThat(response)
-                .containsEntry("error", "Conflict")
-                .containsEntry("message", "Task is already in terminal COMPLETED state");
+        assertThat(problem.getStatus()).isEqualTo(HttpStatus.CONFLICT.value());
+        assertThat(problem.getDetail()).isEqualTo("Task is already in terminal COMPLETED state");
+        assertThat(problem.getTitle()).isEqualTo("Conflict");
+        assertThat(problem.getProperties()).containsEntry("error", "Conflict");
     }
 
     @Test
-    @DisplayName("Should translate MethodArgumentNotValidException to structured field error map")
+    @DisplayName("Should translate MethodArgumentNotValidException to structured field error ProblemDetail")
     void shouldHandleValidationExceptions() throws NoSuchMethodException {
         Object target = new Object();
         BeanPropertyBindingResult bindingResult = new BeanPropertyBindingResult(target, "registerAgentRequest");
@@ -75,14 +78,29 @@ class GlobalExceptionHandlerTest {
         );
         MethodArgumentNotValidException ex = new MethodArgumentNotValidException(parameter, bindingResult);
 
-        Map<String, Object> response = exceptionHandler.handleValidationExceptions(ex);
+        ProblemDetail problem = exceptionHandler.handleValidationExceptions(ex);
 
-        assertThat(response).containsEntry("error", "Validation Failed");
+        assertThat(problem.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST.value());
+        assertThat(problem.getTitle()).isEqualTo("Validation Failed");
+        assertThat(problem.getProperties()).containsKey("details");
+
         @SuppressWarnings("unchecked")
-        Map<String, String> details = (Map<String, String>) response.get("details");
+        Map<String, String> details = (Map<String, String>) problem.getProperties().get("details");
         assertThat(details)
                 .containsEntry("url", "must not be blank")
                 .containsEntry("name", "size must be between 1 and 100");
+    }
+
+    @Test
+    @DisplayName("Should translate generic unhandled exceptions to 500 Internal Server Error ProblemDetail")
+    void shouldHandleGenericException() {
+        Exception ex = new RuntimeException("Database disk failure");
+
+        ProblemDetail problem = exceptionHandler.handleGenericException(ex);
+
+        assertThat(problem.getStatus()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR.value());
+        assertThat(problem.getTitle()).isEqualTo("Internal Server Error");
+        assertThat(problem.getDetail()).isEqualTo("An unexpected internal server error occurred.");
     }
 
     @SuppressWarnings("unused")

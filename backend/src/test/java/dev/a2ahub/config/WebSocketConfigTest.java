@@ -69,4 +69,16 @@ class WebSocketConfigTest {
 
         verify(registration, times(2)).setAllowedOriginPatterns(new String[]{"*"});
     }
+
+    @Test
+    @DisplayName("Should configure client inbound channel interceptor")
+    void shouldConfigureClientInboundChannel() {
+        SecurityProperties securityProperties = new SecurityProperties();
+        WebSocketConfig config = new WebSocketConfig(securityProperties);
+
+        org.springframework.messaging.simp.config.ChannelRegistration registration = mock(org.springframework.messaging.simp.config.ChannelRegistration.class);
+        config.configureClientInboundChannel(registration);
+
+        verify(registration).interceptors(any(org.springframework.messaging.support.ChannelInterceptor.class));
+    }
 }
