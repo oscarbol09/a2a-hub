@@ -24,6 +24,8 @@ export interface AgentCard {
   supportedInterfaces: string[];
 }
 
+export type AgentStatus = 'HEALTHY' | 'DEGRADED' | 'OFFLINE' | 'UNKNOWN';
+
 export interface Agent {
   id: string;
   name: string;
@@ -31,9 +33,9 @@ export interface Agent {
   url: string;
   version: string;
   providerName: string | null;
-  status: 'HEALTHY' | 'DEGRADED' | 'OFFLINE' | 'UNKNOWN';
+  status: AgentStatus;
   authType: string;
-  agentCard: AgentCard;
+  agentCard?: AgentCard | null;
   registeredAt: string;
   lastSeenAt: string | null;
   latencyMs?: number;

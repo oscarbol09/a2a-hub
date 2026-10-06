@@ -84,6 +84,23 @@ const clearAllFilters = () => {
 onMounted(() => {
   fetchDiscoveryData();
 });
+
+defineExpose({
+  agents,
+  skills,
+  tags,
+  loading,
+  error,
+  searchQuery,
+  selectedSkill,
+  selectedTag,
+  fetchDiscoveryData,
+  executeSearch,
+  onSearchInput,
+  toggleSkillFilter,
+  toggleTagFilter,
+  clearAllFilters,
+});
 </script>
 
 <template>

@@ -52,6 +52,18 @@ const statusBgClass = computed(() => {
   }
 });
 
+const skills = computed(() => props.agent.agentCard?.skills ?? []);
+const totalSkillsCount = computed(() => skills.value.length);
+const displayedSkills = computed(() => skills.value.slice(0, 3));
+const extraSkillsCount = computed(() => Math.max(0, skills.value.length - 3));
+
+const formattedTimestamp = computed(() => {
+  if (props.agent.lastSeenAt) {
+    return `Seen ${new Date(props.agent.lastSeenAt).toLocaleTimeString()}`;
+  }
+  return `Registered ${new Date(props.agent.registeredAt).toLocaleDateString()}`;
+});
+
 const handleQuickProbe = (e: Event) => {
   e.stopPropagation();
   probing.value = true;
@@ -62,10 +74,23 @@ const handleQuickProbe = (e: Event) => {
 };
 
 const goToDetail = () => {
-  if (router) {
-    router.push(`/agents/${props.agent.id}`);
-  }
+  router.push(`/agents/${props.agent.id}`);
 };
+
+defineExpose({
+  probing,
+  statusColor,
+  statusPingColor,
+  statusTextClass,
+  statusBgClass,
+  skills,
+  totalSkillsCount,
+  displayedSkills,
+  extraSkillsCount,
+  formattedTimestamp,
+  handleQuickProbe,
+  goToDetail,
+});
 </script>
 
 <template>
@@ -136,11 +161,11 @@ const goToDetail = () => {
         <!-- Skills -->
         <div>
           <p class="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">
-            Skills ({{ agent.agentCard?.skills?.length || 0 }})
+            Skills ({{ totalSkillsCount }})
           </p>
           <div class="flex flex-wrap gap-1.5">
             <span
-              v-for="skill in (agent.agentCard?.skills?.slice(0, 3) || [])"
+              v-for="skill in displayedSkills"
               :key="skill.id"
               class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-700"
               :title="skill.description"
@@ -148,10 +173,10 @@ const goToDetail = () => {
               {{ skill.name }}
             </span>
             <span
-              v-if="(agent.agentCard?.skills?.length || 0) > 3"
+              v-if="extraSkillsCount > 0"
               class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-500"
             >
-              +{{ (agent.agentCard?.skills?.length || 0) - 3 }} more
+              +{{ extraSkillsCount }} more
             </span>
           </div>
         </div>
@@ -162,7 +187,7 @@ const goToDetail = () => {
     <div class="px-5 py-3 bg-gray-50 border-t border-gray-100 flex justify-between items-center text-xs text-gray-500">
       <div class="flex items-center gap-1.5">
         <Activity class="w-3.5 h-3.5 text-gray-400" />
-        <span>{{ agent.lastSeenAt ? 'Seen ' + new Date(agent.lastSeenAt).toLocaleTimeString() : 'Registered ' + new Date(agent.registeredAt).toLocaleDateString() }}</span>
+        <span>{{ formattedTimestamp }}</span>
       </div>
 
       <div class="flex items-center gap-2" @click.stop>

@@ -1,9 +1,9 @@
 import { Client, type IMessage } from '@stomp/stompjs';
 import type { AgentStatusEvent } from './api';
 
-type StatusEventHandler = (event: AgentStatusEvent) => void;
+export type StatusEventHandler = (event: AgentStatusEvent) => void;
 
-class WebSocketService {
+export class WebSocketService {
   private client: Client | null = null;
   private listeners: StatusEventHandler[] = [];
   public isConnected = false;

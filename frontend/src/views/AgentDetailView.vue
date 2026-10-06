@@ -87,6 +87,20 @@ const statusBadge = computed(() => {
 onMounted(() => {
   fetchHealthHistory();
 });
+
+defineExpose({
+  healthData,
+  loading,
+  probing,
+  error,
+  agent,
+  avgLatency,
+  maxLatency,
+  uptimePercent,
+  statusBadge,
+  fetchHealthHistory,
+  triggerProbe,
+});
 </script>
 
 <template>
