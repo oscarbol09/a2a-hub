@@ -65,6 +65,8 @@ class AgentEventPublisherTest {
         Agent agent = new Agent();
         agent.setId(UUID.randomUUID());
         agent.setName("FailingAgent");
+        agent.setUrl("https://failing.agent.io");
+        agent.setStatus("HEALTHY");
 
         doThrow(new RuntimeException("STOMP broker unavailable"))
                 .when(messagingTemplate).convertAndSend(eq("/topic/agents"), any(Map.class));
