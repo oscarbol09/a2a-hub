@@ -55,4 +55,16 @@ public interface AgentRepository extends JpaRepository<Agent, UUID> {
     @Modifying
     @Query(value = "UPDATE agents SET embedding = cast(:embedding as vector) WHERE id = :id", nativeQuery = true)
     void updateEmbedding(@Param("id") UUID id, @Param("embedding") String embedding);
+
+    @Query(value = """
+        SELECT COALESCE(status, 'UNKNOWN') AS status, COUNT(*) AS count
+        FROM agents
+        GROUP BY COALESCE(status, 'UNKNOWN')
+        """, nativeQuery = true)
+    List<StatusCountProjection> countAgentsByStatus();
+
+    interface StatusCountProjection {
+        String getStatus();
+        long getCount();
+    }
 }

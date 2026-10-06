@@ -143,7 +143,11 @@ public class TaskService {
         );
     }
 
-    public record SubmitTaskRequest(UUID agentId, String contextId, Map<String, Object> payload) {}
+    public record SubmitTaskRequest(
+            @jakarta.validation.constraints.NotNull(message = "Agent ID is required") UUID agentId,
+            String contextId,
+            @jakarta.validation.constraints.NotEmpty(message = "Task payload cannot be empty") Map<String, Object> payload
+    ) {}
     public record TaskDto(
             UUID id,
             UUID agentId,

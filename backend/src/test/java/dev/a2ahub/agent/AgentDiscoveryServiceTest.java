@@ -116,29 +116,32 @@ class AgentDiscoveryServiceTest {
     }
 
     @Test
-    @DisplayName("Should aggregate distinct skills from agentSkillRepository")
+    @DisplayName("Should aggregate distinct skills from agentSkillRepository projections")
     void shouldGetDistinctSkills() {
-        AgentSkillEntity s1 = new AgentSkillEntity();
-        s1.setSkillId("get_weather");
-        s1.setName("Current Weather");
-        s1.setDescription("Fetch weather");
-        s1.setTags(List.of("weather"));
-        s1.setAgent(weatherAgent);
+        AgentSkillRepository.SkillAgentProjection p1 = new AgentSkillRepository.SkillAgentProjection(
+                "get_weather",
+                "Current Weather",
+                "Fetch weather",
+                List.of("weather"),
+                weatherAgent.getId()
+        );
+        AgentSkillRepository.SkillAgentProjection p2 = new AgentSkillRepository.SkillAgentProjection(
+                "calc",
+                "Calculator",
+                "Calculate equations",
+                List.of("math"),
+                calculatorAgent.getId()
+        );
 
-        AgentSkillEntity s2 = new AgentSkillEntity();
-        s2.setSkillId("calc");
-        s2.setName("Calculator");
-        s2.setDescription("Calculate equations");
-        s2.setTags(List.of("math"));
-        s2.setAgent(calculatorAgent);
-
-        when(agentSkillRepository.findAll()).thenReturn(List.of(s1, s2));
+        when(agentSkillRepository.findAllSkillProjections()).thenReturn(List.of(p1, p2));
 
         List<AgentDiscoveryService.SkillSummary> skills = discoveryService.getDistinctSkills();
 
         assertThat(skills).hasSize(2);
         assertThat(skills.stream().map(AgentDiscoveryService.SkillSummary::name))
                 .containsExactlyInAnyOrder("Current Weather", "Calculator");
+        assertThat(skills.stream().filter(s -> "Current Weather".equals(s.name())).findFirst().orElseThrow().agentIds())
+                .containsExactly(weatherAgent.getId());
     }
 
     @Test

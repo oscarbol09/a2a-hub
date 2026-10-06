@@ -104,6 +104,10 @@ class AgentDatabaseIntegrationTest {
         assertThat(skills).hasSize(1);
         assertThat(skills.getFirst().getSkillId()).isEqualTo("get_weather");
 
+        List<AgentSkillRepository.SkillAgentProjection> projections = agentSkillRepository.findAllSkillProjections();
+        assertThat(projections).isNotEmpty();
+        assertThat(projections.stream().anyMatch(p -> "get_weather".equals(p.skillId()) && savedAgent.getId().equals(p.agentId()))).isTrue();
+
         // Verify searchIndexedAgents with jsonb_exists and GIN array query
         Page<Agent> searched = agentRepository.searchIndexedAgents(
                 "get_weather",

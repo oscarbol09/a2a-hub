@@ -87,22 +87,22 @@ public class AgentDiscoveryService {
      * Returns distinct skill catalog with aggregated agent associations.
      */
     public List<SkillSummary> getDistinctSkills() {
-        List<AgentSkillEntity> allSkills = agentSkillRepository.findAll();
+        List<AgentSkillRepository.SkillAgentProjection> allSkills = agentSkillRepository.findAllSkillProjections();
         Map<String, SkillSummaryBuilder> skillMap = new LinkedHashMap<>();
 
-        for (AgentSkillEntity s : allSkills) {
-            String key = s.getSkillId();
+        for (AgentSkillRepository.SkillAgentProjection s : allSkills) {
+            String key = s.skillId();
             if (key == null || key.isBlank()) {
-                key = s.getName();
+                key = s.name();
             }
             if (key == null) continue;
 
             skillMap.computeIfAbsent(key, k -> new SkillSummaryBuilder(
                     k,
-                    s.getName(),
-                    s.getDescription(),
-                    new HashSet<>(s.getTags() != null ? s.getTags() : List.of())
-            )).addAgent(s.getAgent() != null ? s.getAgent().getId() : null);
+                    s.name(),
+                    s.description(),
+                    new HashSet<>(s.tags() != null ? s.tags() : List.of())
+            )).addAgent(s.agentId());
         }
 
         return skillMap.values().stream()

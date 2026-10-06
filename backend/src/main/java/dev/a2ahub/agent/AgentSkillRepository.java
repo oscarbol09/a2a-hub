@@ -27,8 +27,19 @@ public interface AgentSkillRepository extends JpaRepository<AgentSkillEntity, UU
         """, nativeQuery = true)
     List<TagCountProjection> findDistinctTagCounts();
 
+    @Query("SELECT new dev.a2ahub.agent.AgentSkillRepository$SkillAgentProjection(s.skillId, s.name, s.description, s.tags, s.agent.id) FROM AgentSkillEntity s")
+    List<SkillAgentProjection> findAllSkillProjections();
+
     interface TagCountProjection {
         String getTag();
         long getCount();
     }
+
+    record SkillAgentProjection(
+        String skillId,
+        String name,
+        String description,
+        List<String> tags,
+        UUID agentId
+    ) {}
 }
