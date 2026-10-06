@@ -49,6 +49,6 @@ springdoc:
 
 logging:
   level:
-    root: INFO
-    dev.a2ahub: DEBUG
+    root: ${A2A_HUB_LOG_ROOT_LEVEL:INFO}
+    dev.a2ahub: ${A2A_HUB_LOG_LEVEL:DEBUG}
 
