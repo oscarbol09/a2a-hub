@@ -37,8 +37,9 @@ a2ahub:
       allow-private-networks: ${A2A_HUB_ALLOW_PRIVATE_NETWORKS:false}
   gemini:
     api-key: ${GEMINI_API_KEY:}
-  health-monitor:
-    interval-ms: ${A2A_HUB_HEALTH_INTERVAL_MS:60000}
+  health:
+    interval-ms: ${A2A_HUB_HEALTH_INTERVAL_MS:30000}
+    retention-hours: ${A2A_HUB_HEALTH_RETENTION_HOURS:48}
 
 springdoc:
   api-docs:

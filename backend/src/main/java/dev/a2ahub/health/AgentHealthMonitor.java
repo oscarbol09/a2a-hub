@@ -8,7 +8,6 @@ import dev.a2ahub.events.AgentEventPublisher;
 import dev.a2ahub.events.AgentStatusEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -36,19 +35,19 @@ public class AgentHealthMonitor {
     private final AgentEventPublisher eventPublisher;
     private final SsrfValidator ssrfValidator;
     private final RestClient probeClient;
-
-    @Value("${a2ahub.health.retention-hours:48}")
-    private int retentionHours;
+    private final HealthProperties healthProperties;
 
     public AgentHealthMonitor(AgentRepository agentRepository,
                               HealthCheckRepository healthCheckRepository,
                               AgentEventPublisher eventPublisher,
                               SsrfValidator ssrfValidator,
-                              RestClient.Builder restClientBuilder) {
+                              RestClient.Builder restClientBuilder,
+                              HealthProperties healthProperties) {
         this.agentRepository = agentRepository;
         this.healthCheckRepository = healthCheckRepository;
         this.eventPublisher = eventPublisher;
         this.ssrfValidator = ssrfValidator;
+        this.healthProperties = healthProperties;
 
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(Duration.ofMillis(PROBE_TIMEOUT_MS));
@@ -63,7 +62,7 @@ public class AgentHealthMonitor {
      * Periodic health probe cycle across all registered agents.
      * Uses Java 21 Virtual Threads for non-blocking concurrent I/O.
      */
-    @Scheduled(fixedDelayString = "${a2ahub.health.interval-ms:30000}", initialDelay = 10000)
+    @Scheduled(fixedDelayString = "#{@healthProperties.intervalMs}", initialDelay = 10000)
     public void runHealthChecks() {
         List<Agent> agents = agentRepository.findAll();
         if (agents.isEmpty()) {
@@ -159,10 +158,10 @@ public class AgentHealthMonitor {
     @Scheduled(cron = "0 0 * * * *")
     @Transactional
     public void purgeOldHealthLogs() {
-        ZonedDateTime cutoff = ZonedDateTime.now().minusHours(retentionHours);
+        ZonedDateTime cutoff = ZonedDateTime.now().minusHours(healthProperties.getRetentionHours());
         int deleted = healthCheckRepository.deleteOlderThan(cutoff);
         if (deleted > 0) {
-            log.info("Purged {} health check logs older than {} hours", deleted, retentionHours);
+            log.info("Purged {} health check logs older than {} hours", deleted, healthProperties.getRetentionHours());
         }
     }
 

@@ -5,11 +5,11 @@ import dev.a2ahub.agent.AgentCard;
 import dev.a2ahub.agent.AgentRepository;
 import dev.a2ahub.security.SsrfValidator;
 import dev.a2ahub.events.AgentEventPublisher;
-import dev.a2ahub.events.AgentStatusEvent;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.web.client.RestClient;
@@ -29,6 +29,7 @@ import static org.mockito.Mockito.*;
 @DisplayName("AgentHealthMonitor Unit Tests")
 class AgentHealthMonitorTest {
 
+    private static final int RETENTION_HOURS = 48;
     @Mock
     private AgentRepository agentRepository;
 
@@ -59,13 +60,16 @@ class AgentHealthMonitorTest {
     void setUp() {
         when(restClientBuilder.requestFactory(any())).thenReturn(restClientBuilder);
         when(restClientBuilder.build()).thenReturn(probeClient);
+        HealthProperties healthProperties = new HealthProperties();
+        healthProperties.setRetentionHours(RETENTION_HOURS);
 
         healthMonitor = new AgentHealthMonitor(
                 agentRepository,
                 healthCheckRepository,
                 eventPublisher,
                 ssrfValidator,
-                restClientBuilder
+                restClientBuilder,
+                healthProperties
         );
     }
 
@@ -123,9 +127,14 @@ class AgentHealthMonitorTest {
     @DisplayName("Should purge health check logs older than retention cutoff")
     void shouldPurgeOldHealthLogs() {
         when(healthCheckRepository.deleteOlderThan(any(ZonedDateTime.class))).thenReturn(150);
+        ZonedDateTime before = ZonedDateTime.now();
 
         healthMonitor.purgeOldHealthLogs();
 
-        verify(healthCheckRepository).deleteOlderThan(any(ZonedDateTime.class));
+        ArgumentCaptor<ZonedDateTime> cutoff = ArgumentCaptor.forClass(ZonedDateTime.class);
+        verify(healthCheckRepository).deleteOlderThan(cutoff.capture());
+        // the exact cutoff cannot be known in advance this is why we use isBetween.
+        assertThat(cutoff.getValue())
+                .isBetween(before.minusHours(RETENTION_HOURS), ZonedDateTime.now().minusHours(RETENTION_HOURS));
     }
 }
