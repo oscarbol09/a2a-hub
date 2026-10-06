@@ -37,14 +37,27 @@ public class AesGcmAttributeConverter implements AttributeConverter<String, Stri
     }
 
     @Autowired
-    public void configure(SecurityProperties properties) {
+    public void configure(SecurityProperties properties, @Autowired(required = false) org.springframework.core.env.Environment env) {
         String key = properties.getEncryptionKey();
+        boolean isProd = env != null && (env.matchesProfiles("prod") || env.matchesProfiles("production"));
+
         if (key != null && !key.isBlank()) {
+            if (isProd && DEFAULT_DEV_KEY.equals(key.trim())) {
+                throw new IllegalStateException("Default development master encryption key cannot be used in production environment. Configure A2A_HUB_ENCRYPTION_KEY.");
+            }
             initKey(key);
             log.info("AES-GCM master encryption key configured from application environment");
         } else {
-            log.warn("Running with default master encryption key. For production, set A2A_HUB_ENCRYPTION_KEY environment variable.");
+            if (isProd) {
+                throw new IllegalStateException("A2A_HUB_ENCRYPTION_KEY environment variable must be set in production mode with at least 16 characters.");
+            }
+            initKey(DEFAULT_DEV_KEY);
+            log.warn("Running with default master encryption key in development mode. For production, set A2A_HUB_ENCRYPTION_KEY environment variable.");
         }
+    }
+
+    public void configure(SecurityProperties properties) {
+        configure(properties, null);
     }
 
     public static void initKey(String secret) {

@@ -56,4 +56,25 @@ class AesGcmAttributeConverterTest {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("at least 16 characters");
     }
+
+    @Test
+    @DisplayName("Should fail fast in production profile if encryption key is default or missing")
+    void shouldFailFastInProductionWithDefaultKey() {
+        org.springframework.mock.env.MockEnvironment mockEnv = new org.springframework.mock.env.MockEnvironment();
+        mockEnv.setActiveProfiles("prod");
+
+        SecurityProperties defaultProps = new SecurityProperties();
+        defaultProps.setEncryptionKey("a2a-hub-default-master-encryption-key-32bytes!");
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> converter.configure(defaultProps, mockEnv))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Default development master encryption key cannot be used in production");
+
+        SecurityProperties emptyProps = new SecurityProperties();
+        emptyProps.setEncryptionKey("");
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> converter.configure(emptyProps, mockEnv))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("A2A_HUB_ENCRYPTION_KEY environment variable must be set");
+    }
 }

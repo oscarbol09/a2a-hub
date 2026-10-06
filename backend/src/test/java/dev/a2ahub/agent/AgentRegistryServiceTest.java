@@ -35,6 +35,9 @@ class AgentRegistryServiceTest {
     private AgentSkillRepository agentSkillRepository;
 
     @Mock
+    private dev.a2ahub.task.TaskRepository taskRepository;
+
+    @Mock
     private SsrfValidator ssrfValidator;
 
     @Mock
@@ -63,6 +66,7 @@ class AgentRegistryServiceTest {
         agentRegistryService = new AgentRegistryService(
                 agentRepository,
                 agentSkillRepository,
+                taskRepository,
                 ssrfValidator,
                 embeddingService,
                 eventPublisher,
@@ -166,15 +170,17 @@ class AgentRegistryServiceTest {
     }
 
     @Test
-    @DisplayName("Should unregister agent by ID, cleanup skills, and broadcast event")
+    @DisplayName("Should unregister agent by ID, cleanup skills, tasks, and broadcast event")
     void shouldUnregisterAgent() {
         UUID id = UUID.randomUUID();
         doNothing().when(agentSkillRepository).deleteByAgentId(id);
+        doNothing().when(taskRepository).deleteByAgentId(id);
         doNothing().when(agentRepository).deleteById(id);
 
         agentRegistryService.unregister(id);
 
         verify(agentSkillRepository).deleteByAgentId(id);
+        verify(taskRepository).deleteByAgentId(id);
         verify(agentRepository).deleteById(id);
         verify(eventPublisher).publishAgentStatusChanged(id, "UNREGISTERED");
     }

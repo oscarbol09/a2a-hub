@@ -2,6 +2,7 @@ package dev.a2ahub.agent;
 
 import dev.a2ahub.events.AgentEventPublisher;
 import dev.a2ahub.security.SsrfValidator;
+import dev.a2ahub.task.TaskRepository;
 import dev.a2ahub.vector.EmbeddingService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,6 +22,7 @@ public class AgentRegistryService {
     private static final Logger log = LoggerFactory.getLogger(AgentRegistryService.class);
     private final AgentRepository agentRepository;
     private final AgentSkillRepository agentSkillRepository;
+    private final TaskRepository taskRepository;
     private final SsrfValidator ssrfValidator;
     private final EmbeddingService embeddingService;
     private final AgentEventPublisher eventPublisher;
@@ -28,19 +30,20 @@ public class AgentRegistryService {
 
     public AgentRegistryService(AgentRepository agentRepository,
                                 AgentSkillRepository agentSkillRepository,
+                                TaskRepository taskRepository,
                                 SsrfValidator ssrfValidator,
                                 EmbeddingService embeddingService,
                                 AgentEventPublisher eventPublisher,
                                 RestClient.Builder restClientBuilder) {
         this.agentRepository = agentRepository;
         this.agentSkillRepository = agentSkillRepository;
+        this.taskRepository = taskRepository;
         this.ssrfValidator = ssrfValidator;
         this.embeddingService = embeddingService;
         this.eventPublisher = eventPublisher;
         this.restClient = restClientBuilder.build();
     }
 
-    @Transactional
     public Agent register(String agentUrl) {
         if (agentRepository.existsByUrl(agentUrl)) {
             throw new IllegalArgumentException("Agent with URL " + agentUrl + " is already registered.");
@@ -70,6 +73,20 @@ public class AgentRegistryService {
             throw new IllegalStateException("Invalid Agent Card received from " + fetchUrl);
         }
 
+        // Generate vector embedding for semantic discovery before DB transaction
+        String embeddingVector = embeddingService.generateAgentEmbedding(card);
+
+        // Atomically persist agent, skills, and embedding in a short DB transaction
+        Agent savedAgent = persistRegisteredAgent(agentUrl, card, embeddingVector);
+
+        // Broadcast registration event via WebSocket after successful commit
+        eventPublisher.publishAgentRegistered(savedAgent);
+
+        return savedAgent;
+    }
+
+    @Transactional
+    public Agent persistRegisteredAgent(String agentUrl, AgentCard card, String embeddingVector) {
         Agent agent = new Agent();
         agent.setName(card.name());
         agent.setDescription(card.description());
@@ -94,8 +111,6 @@ public class AgentRegistryService {
             agentSkillRepository.saveAll(skillEntities);
         }
 
-        // Generate and update vector embedding for semantic discovery
-        String embeddingVector = embeddingService.generateAgentEmbedding(card);
         if (embeddingVector != null) {
             try {
                 agentRepository.updateEmbedding(savedAgent.getId(), embeddingVector);
@@ -103,9 +118,6 @@ public class AgentRegistryService {
                 log.warn("Failed to update vector embedding for agent {}: {}", savedAgent.getId(), e.getMessage());
             }
         }
-
-        // Broadcast registration event via WebSocket
-        eventPublisher.publishAgentRegistered(savedAgent);
 
         return savedAgent;
     }
@@ -132,6 +144,7 @@ public class AgentRegistryService {
     @Transactional
     public void unregister(UUID id) {
         agentSkillRepository.deleteByAgentId(id);
+        taskRepository.deleteByAgentId(id);
         agentRepository.deleteById(id);
         eventPublisher.publishAgentStatusChanged(id, "UNREGISTERED");
     }

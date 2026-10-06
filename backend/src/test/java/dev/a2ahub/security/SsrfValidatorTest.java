@@ -31,9 +31,12 @@ class SsrfValidatorTest {
             "http://192.168.1.1:80",
             "http://172.16.0.1",
             "http://0.0.0.0:8080",
-            "http://[::1]:8080"
+            "http://[::1]:8080",
+            "http://[::ffff:127.0.0.1]:8080",
+            "http://[::ffff:169.254.169.254]:8080",
+            "http://[fc00::1]:8080"
     })
-    @DisplayName("Should block loopback, private ranges, link-local, and cloud metadata (CWE-918)")
+    @DisplayName("Should block loopback, private ranges, link-local, cloud metadata, and IPv4-mapped IPv6 (CWE-918)")
     void shouldBlockSsrfTargets(String forbiddenUrl) {
         assertThatThrownBy(() -> ssrfValidator.validateSafeRemoteUrl(forbiddenUrl))
                 .isInstanceOf(IllegalArgumentException.class);
