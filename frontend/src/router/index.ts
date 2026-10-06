@@ -1,25 +1,33 @@
 import { createRouter, createWebHistory } from 'vue-router';
-import AgentRegistryView from '../views/AgentRegistryView.vue';
-import DiscoverView from '../views/DiscoverView.vue';
-import AgentDetailView from '../views/AgentDetailView.vue';
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
+  scrollBehavior(_to, _from, savedPosition) {
+    if (savedPosition) {
+      return savedPosition;
+    }
+    return { top: 0 };
+  },
   routes: [
     {
       path: '/',
       name: 'registry',
-      component: AgentRegistryView
+      component: () => import('../views/AgentRegistryView.vue')
     },
     {
       path: '/discover',
       name: 'discover',
-      component: DiscoverView
+      component: () => import('../views/DiscoverView.vue')
     },
     {
       path: '/agents/:id',
       name: 'agent-detail',
-      component: AgentDetailView
+      component: () => import('../views/AgentDetailView.vue')
+    },
+    {
+      path: '/:pathMatch(.*)*',
+      name: 'not-found',
+      component: () => import('../views/NotFoundView.vue')
     }
   ]
 });
