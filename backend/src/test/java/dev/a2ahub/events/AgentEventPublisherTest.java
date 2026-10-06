@@ -110,7 +110,7 @@ class AgentEventPublisherTest {
                 "WeatherAgent",
                 "HEALTHY",
                 "UNKNOWN",
-                45L,
+                45,
                 ZonedDateTime.now(),
                 "200 OK"
         );
@@ -128,7 +128,7 @@ class AgentEventPublisherTest {
                 "BrokenAgent",
                 "OFFLINE",
                 "HEALTHY",
-                0L,
+                0,
                 ZonedDateTime.now(),
                 "Failed"
         );
@@ -148,10 +148,11 @@ class AgentEventPublisherTest {
         TaskService.TaskDto taskDto = new TaskService.TaskDto(
                 taskId,
                 agentId,
-                "EXECUTE_WORKFLOW",
+                "TranslatorAgent",
+                "ctx-123",
                 "COMPLETED",
-                "{\"input\":\"test\"}",
-                "{\"output\":\"done\"}",
+                Map.of("input", "test"),
+                Map.of("output", "done"),
                 null,
                 ZonedDateTime.now(),
                 ZonedDateTime.now()
@@ -177,11 +178,12 @@ class AgentEventPublisherTest {
         TaskService.TaskDto taskDto = new TaskService.TaskDto(
                 UUID.randomUUID(),
                 UUID.randomUUID(),
-                "TASK",
+                "FailingAgent",
+                "ctx-456",
                 "FAILED",
-                "{}",
+                Map.of("input", "err"),
                 null,
-                "Error",
+                "Connection timeout",
                 ZonedDateTime.now(),
                 ZonedDateTime.now()
         );

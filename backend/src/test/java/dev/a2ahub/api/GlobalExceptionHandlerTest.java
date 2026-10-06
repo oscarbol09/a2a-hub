@@ -30,7 +30,7 @@ class GlobalExceptionHandlerTest {
     @DisplayName("Should translate AgentNotFoundException to RFC 7807 ProblemDetail with 404 NOT_FOUND")
     void shouldHandleAgentNotFound() {
         UUID agentId = UUID.randomUUID();
-        AgentNotFoundException ex = new AgentNotFoundException(agentId);
+        AgentNotFoundException ex = new AgentNotFoundException("Agent not found with id: " + agentId);
 
         ProblemDetail problem = exceptionHandler.handleAgentNotFound(ex);
 
