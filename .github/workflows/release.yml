@@ -1,0 +1,88 @@
+name: Release Pipeline
+ 
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  # --------------------------------------------------------------------------
+  # Gate: Automated Multi-Platform Release & Container Publishing (GHCR)
+  # --------------------------------------------------------------------------
+  publish-release:
+    name: Build & Publish Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up Temurin JDK 21
+        uses: actions/setup-java@6a0805fcefea3d4657a47ac4c165951e33482018 # v4.2.2
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Compile and Package Backend Binary (.jar)
+        working-directory: ./backend
+        run: mvn clean package -DskipTests -B
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.2.0
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: './frontend/package-lock.json'
+
+      - name: Build Frontend Distribution Bundle
+        working-directory: ./frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Package Frontend Distribution Archive
+        run: |
+          tar -czf frontend-dist-${{ github.ref_name }}.tar.gz -C frontend/dist .
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.7.1
+
+      - name: Log in to GitHub Container Registry (GHCR)
+        uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3.3.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and Push Production Container Image
+        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5.4.0
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}/backend:${{ github.ref_name }}
+            ghcr.io/${{ github.repository }}/backend:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Create GitHub Release and Attach Binaries
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create ${{ github.ref_name }} \
+            backend/target/*.jar \
+            frontend-dist-${{ github.ref_name }}.tar.gz \
+            --title "A2A Hub Release ${{ github.ref_name }}" \
+            --generate-notes

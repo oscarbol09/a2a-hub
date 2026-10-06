@@ -55,6 +55,14 @@ jobs:
         working-directory: ./backend
         run: mvn clean test -B
 
+      - name: Upload JaCoCo Coverage Report
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+        if: always()
+        with:
+          name: backend-jacoco-coverage
+          path: backend/target/site/jacoco
+          if-no-files-found: ignore
+
   # --------------------------------------------------------------------------
   # Gate 3: Frontend Unit Tests, Typecheck & Production Build (Vue 3 + Vite)
   # --------------------------------------------------------------------------
@@ -77,9 +85,17 @@ jobs:
         working-directory: ./frontend
         run: npm ci
 
-      - name: Run Frontend Vitest Test Suite
+      - name: Run Frontend Vitest Test Suite with Coverage
         working-directory: ./frontend
-        run: npm test
+        run: npm run test:coverage
+
+      - name: Upload Vitest Coverage Report
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+        if: always()
+        with:
+          name: frontend-vitest-coverage
+          path: frontend/coverage
+          if-no-files-found: ignore
 
       - name: Typecheck and Build Bundle
         working-directory: ./frontend
