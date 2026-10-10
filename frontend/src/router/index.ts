@@ -25,6 +25,11 @@ const router = createRouter({
       component: () => import('../views/AgentDetailView.vue')
     },
     {
+      path: '/orchestrate',
+      name: 'orchestrate',
+      component: () => import('../views/OrchestrateView.vue')
+    },
+    {
       path: '/:pathMatch(.*)*',
       name: 'not-found',
       component: () => import('../views/NotFoundView.vue')

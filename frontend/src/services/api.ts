@@ -115,3 +115,42 @@ export const healthApi = {
   triggerCheck: (agentId: string) => api.post<{ agentId: string; status: string; latencyMs: number; error: string | null }>(`/agents/${agentId}/health/check`),
   getStats: () => api.get<HubHealthStats>('/health/stats')
 };
+
+export interface TaskDto {
+  id: string;
+  agentId: string;
+  agentName: string;
+  contextId: string;
+  state: string;
+  request: any;
+  response: any;
+  errorDetail: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SubmitTaskRequest {
+  agentId: string;
+  contextId?: string;
+  payload: Record<string, any>;
+}
+
+export const tasksApi = {
+  submitTask: (req: SubmitTaskRequest) => api.post<TaskDto>('/tasks', req),
+  getTask: (id: string) => api.get<TaskDto>(`/tasks/${id}`),
+  getTasksByAgent: (agentId: string) => api.get<TaskDto[]>(`/tasks/agent/${agentId}`)
+};
+
+export interface AiSuggestionRequest {
+  taskDescription: string;
+}
+
+export interface AiSuggestionResponse {
+  agentId: string;
+  agentName: string;
+  reasoning: string;
+}
+
+export const orchestrationApi = {
+  suggest: (req: AiSuggestionRequest) => api.post<AiSuggestionResponse>('/orchestration/suggest', req)
+};

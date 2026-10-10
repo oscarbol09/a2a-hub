@@ -48,13 +48,18 @@ const route = useRoute();
               <span>Discovery</span>
             </router-link>
 
-            <span
-              class="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-gray-400 cursor-not-allowed opacity-60"
-              title="Orchestration proxy available in Phase 4"
+            <router-link
+              to="/orchestrate"
+              :class="[
+                'flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
+                route.name === 'orchestrate'
+                  ? 'bg-blue-50 text-blue-700 font-semibold border border-blue-100'
+                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+              ]"
             >
-              <Workflow class="w-4 h-4 text-gray-300" />
+              <Workflow class="w-4 h-4" :class="route.name === 'orchestrate' ? 'text-blue-600' : 'text-gray-500'" />
               <span>Orchestrate</span>
-            </span>
+            </router-link>
           </div>
         </div>
       </div>

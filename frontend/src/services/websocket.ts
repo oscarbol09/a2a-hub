@@ -1,5 +1,13 @@
 import { Client, type IMessage } from '@stomp/stompjs';
-import type { AgentStatusEvent } from './api';
+import type { AgentStatusEvent, TaskUpdatedEvent } from './api';
+
+export interface TaskUpdatedEvent {
+  type: string;
+  taskId: string;
+  agentId: string;
+  state: string;
+  timestamp: string;
+}
 
 export type StatusEventHandler = (event: AgentStatusEvent) => void;
 export type ConnectionEventHandler = (connected: boolean) => void;
@@ -7,6 +15,7 @@ export type ConnectionEventHandler = (connected: boolean) => void;
 export class WebSocketService {
   private client: Client | null = null;
   private listeners: StatusEventHandler[] = [];
+  private taskListeners: ((event: TaskUpdatedEvent) => void)[] = [];
   private connectionListeners: ConnectionEventHandler[] = [];
   public isConnected = false;
 
@@ -37,6 +46,15 @@ export class WebSocketService {
             console.error('[WebSocket] Failed to parse agent status event:', e);
           }
         });
+
+        this.client?.subscribe('/topic/tasks', (message: IMessage) => {
+          try {
+            const event: TaskUpdatedEvent = JSON.parse(message.body);
+            this.taskListeners.forEach(fn => fn(event));
+          } catch (e) {
+            console.error('[WebSocket] Failed to parse task updated event:', e);
+          }
+        });
       },
       onDisconnect: () => {
         this.isConnected = false;
@@ -57,6 +75,13 @@ export class WebSocketService {
     this.listeners.push(callback);
     return () => {
       this.listeners = this.listeners.filter(l => l !== callback);
+    };
+  }
+
+  public onTaskUpdate(callback: (event: TaskUpdatedEvent) => void) {
+    this.taskListeners.push(callback);
+    return () => {
+      this.taskListeners = this.taskListeners.filter(l => l !== callback);
     };
   }
 
