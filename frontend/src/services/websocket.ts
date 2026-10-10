@@ -1,5 +1,5 @@
 import { Client, type IMessage } from '@stomp/stompjs';
-import type { AgentStatusEvent, TaskUpdatedEvent } from './api';
+import type { AgentStatusEvent } from './api';
 
 export interface TaskUpdatedEvent {
   type: string;

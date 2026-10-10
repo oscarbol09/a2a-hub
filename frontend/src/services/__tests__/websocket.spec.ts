@@ -4,7 +4,7 @@ import { WebSocketService, wsService } from '../websocket';
 import type { AgentStatusEvent } from '../api';
 
 let capturedClientOptions: any = null;
-let mockSubscribeCallback: ((message: IMessage) => void) | null = null;
+let mockSubscribeCallbacks: Record<string, (message: IMessage) => void> = {};
 let clientInstances: any[] = [];
 
 vi.mock('@stomp/stompjs', () => {
@@ -20,8 +20,8 @@ vi.mock('@stomp/stompjs', () => {
         deactivate: vi.fn(function () {
           instance.active = false;
         }),
-        subscribe: vi.fn(function (_topic: string, callback: (message: IMessage) => void) {
-          mockSubscribeCallback = callback;
+        subscribe: vi.fn(function (topic: string, callback: (message: IMessage) => void) {
+          mockSubscribeCallbacks[topic] = callback;
           return { id: 'sub-0', unsubscribe: vi.fn() };
         }),
       };
@@ -38,7 +38,7 @@ describe('WebSocketService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     capturedClientOptions = null;
-    mockSubscribeCallback = null;
+    mockSubscribeCallbacks = {};
     clientInstances = [];
     service = new WebSocketService();
     originalLocation = window.location;
@@ -180,7 +180,7 @@ describe('WebSocketService', () => {
         nack: vi.fn(),
       } as any;
 
-      mockSubscribeCallback!(mockMessage);
+      mockSubscribeCallbacks['/topic/agents/status']!(mockMessage);
 
       expect(listenerA).toHaveBeenCalledTimes(1);
       expect(listenerA).toHaveBeenCalledWith(mockEventFixture);
@@ -203,7 +203,7 @@ describe('WebSocketService', () => {
         nack: vi.fn(),
       } as any;
 
-      expect(() => mockSubscribeCallback!(malformedMessage)).not.toThrow();
+      expect(() => mockSubscribeCallbacks['/topic/agents/status']!(malformedMessage)).not.toThrow();
       expect(listener).not.toHaveBeenCalled();
       expect(consoleSpy).toHaveBeenCalledWith(
         '[WebSocket] Failed to parse agent status event:',
@@ -233,7 +233,7 @@ describe('WebSocketService', () => {
         nack: vi.fn(),
       } as any;
 
-      mockSubscribeCallback!(mockMessage);
+      mockSubscribeCallbacks['/topic/agents/status']!(mockMessage);
 
       expect(listenerA).not.toHaveBeenCalled();
       expect(listenerB).toHaveBeenCalledTimes(1);
