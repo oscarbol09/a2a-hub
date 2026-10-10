@@ -24,14 +24,34 @@ services:
     ports:
       - "8080:8080"
     environment:
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_NAME: a2ahub
-      DB_USER: postgres
-      DB_PASSWORD: postgres
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/a2ahub
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
     depends_on:
       postgres:
         condition: service_healthy
+
+  weather-agent:
+    build:
+      context: ./weather-agent
+      dockerfile: Dockerfile
+    container_name: a2a-weather-agent
+    ports:
+      - "8081:8081"
+    environment:
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      SPRING_AI_GOOGLE_GENAI_API_KEY: ${GEMINI_API_KEY}
+
+  calculator-agent:
+    build:
+      context: ./calculator-agent
+      dockerfile: Dockerfile
+    container_name: a2a-calculator-agent
+    ports:
+      - "8082:8082"
+    environment:
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
 
 volumes:
   postgres_data:
