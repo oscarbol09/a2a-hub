@@ -4,8 +4,12 @@ import dev.a2ahub.agent.Agent;
 import dev.a2ahub.agent.AgentCard;
 import dev.a2ahub.agent.AgentRepository;
 import dev.a2ahub.security.SsrfValidator;
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
+import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
+import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.task.AsyncTaskExecutor;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
@@ -20,12 +24,14 @@ import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 /**
  * Non-transactional Orchestrator for agent health checks.
- * Dispatches concurrent network probes across Virtual Threads.
+ * Dispatches concurrent network probes across Virtual Threads with bounded concurrency
+ * via a Semaphore and circuit breaking per agent host.
  * Keeps HikariCP connections completely unleased during blocking HTTP I/O.
  */
 @Service
@@ -44,7 +50,10 @@ public class AgentHealthMonitor {
     private final RestClient probeClient;
     private final HealthProperties healthProperties;
     private final AsyncTaskExecutor healthProbeTaskExecutor;
+    private final Semaphore probeSemaphore;
+    private final CircuitBreakerRegistry circuitBreakerRegistry;
 
+    @Autowired
     public AgentHealthMonitor(AgentRepository agentRepository,
                               HealthCheckRepository healthCheckRepository,
                               AgentHealthPersistenceService persistenceService,
@@ -52,12 +61,26 @@ public class AgentHealthMonitor {
                               RestClient.Builder restClientBuilder,
                               HealthProperties healthProperties,
                               @Qualifier("healthProbeTaskExecutor") AsyncTaskExecutor healthProbeTaskExecutor) {
+        this(agentRepository, healthCheckRepository, persistenceService, ssrfValidator, restClientBuilder,
+                healthProperties, healthProbeTaskExecutor, createDefaultCircuitBreakerRegistry());
+    }
+
+    public AgentHealthMonitor(AgentRepository agentRepository,
+                              HealthCheckRepository healthCheckRepository,
+                              AgentHealthPersistenceService persistenceService,
+                              SsrfValidator ssrfValidator,
+                              RestClient.Builder restClientBuilder,
+                              HealthProperties healthProperties,
+                              @Qualifier("healthProbeTaskExecutor") AsyncTaskExecutor healthProbeTaskExecutor,
+                              CircuitBreakerRegistry circuitBreakerRegistry) {
         this.agentRepository = agentRepository;
         this.healthCheckRepository = healthCheckRepository;
         this.persistenceService = persistenceService;
         this.ssrfValidator = ssrfValidator;
         this.healthProperties = healthProperties;
         this.healthProbeTaskExecutor = healthProbeTaskExecutor;
+        this.probeSemaphore = new Semaphore(healthProperties.getMaxConcurrentProbes());
+        this.circuitBreakerRegistry = circuitBreakerRegistry;
 
         HttpClient httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofMillis(PROBE_TIMEOUT_MS))
@@ -69,6 +92,16 @@ public class AgentHealthMonitor {
         this.probeClient = restClientBuilder
                 .requestFactory(requestFactory)
                 .build();
+    }
+
+    private static CircuitBreakerRegistry createDefaultCircuitBreakerRegistry() {
+        CircuitBreakerConfig config = CircuitBreakerConfig.custom()
+                .failureRateThreshold(50.0f)
+                .slidingWindowSize(5)
+                .minimumNumberOfCalls(3)
+                .waitDurationInOpenState(Duration.ofSeconds(60))
+                .build();
+        return CircuitBreakerRegistry.of(config);
     }
 
     /**
@@ -113,7 +146,7 @@ public class AgentHealthMonitor {
                     persistenceService.recordProbeResult(
                             result.agentId(),
                             result.status(),
-                            result.latencyMs(),
+                            result.latencyMs() != null ? result.latencyMs() : 0,
                             result.error()
                     );
                     recorded++;
@@ -131,47 +164,113 @@ public class AgentHealthMonitor {
      */
     public HealthCheckResult checkAgent(Agent agent) {
         HealthCheckResult result = executeProbe(new AgentTarget(agent.getId(), agent.getName(), agent.getUrl()));
-        persistenceService.recordProbeResult(agent.getId(), result.status(), result.latencyMs(), result.error());
+        persistenceService.recordProbeResult(
+                agent.getId(),
+                result.status(),
+                result.latencyMs() != null ? result.latencyMs() : 0,
+                result.error()
+        );
         return result;
     }
 
     /**
      * Pure HTTP probe execution. Completely non-transactional and isolated.
+     * Enforces bounded concurrency via probeSemaphore and circuit-breaking per agent host.
      */
     public HealthCheckResult executeProbe(AgentTarget target) {
-        String probeUrl = target.url().endsWith("/")
-                ? target.url() + ".well-known/agent-card.json"
-                : target.url() + "/.well-known/agent-card.json";
+        String host = extractHost(target.url());
+        CircuitBreaker cb = circuitBreakerRegistry.circuitBreaker(host);
 
-        long startTime = System.currentTimeMillis();
-        String status;
-        String errorMessage = null;
-        int latencyMs;
-
-        try {
-            ssrfValidator.validateSafeRemoteUrl(target.url());
-
-            AgentCard card = probeClient.get()
-                    .uri(URI.create(probeUrl))
-                    .retrieve()
-                    .body(AgentCard.class);
-
-            latencyMs = (int) (System.currentTimeMillis() - startTime);
-
-            if (card != null && card.name() != null) {
-                status = latencyMs > DEGRADED_LATENCY_THRESHOLD_MS ? "DEGRADED" : "HEALTHY";
-            } else {
-                status = "DEGRADED";
-                errorMessage = "Agent card response missing required metadata";
-            }
-        } catch (Exception e) {
-            latencyMs = (int) (System.currentTimeMillis() - startTime);
-            status = "OFFLINE";
-            errorMessage = e.getMessage() != null ? e.getMessage() : "Connection failed";
-            log.debug("Health probe failed for agent {} ({}): {}", target.name(), target.id(), errorMessage);
+        if (!cb.tryAcquirePermission()) {
+            log.warn("Health probe skipped for agent {} ({}): Circuit breaker OPEN for host {}",
+                    target.name(), target.id(), host);
+            return new HealthCheckResult(
+                    target.id(),
+                    "OFFLINE",
+                    null,
+                    "Circuit breaker OPEN: agent host " + host + " is repeatedly failing, backing off"
+            );
         }
 
-        return new HealthCheckResult(target.id(), status, latencyMs, errorMessage);
+        try {
+            probeSemaphore.acquire();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            cb.releasePermission();
+            return new HealthCheckResult(target.id(), "OFFLINE", 0, "Health probe interrupted waiting for permit");
+        }
+
+        try {
+            String probeUrl = target.url().endsWith("/")
+                    ? target.url() + ".well-known/agent-card.json"
+                    : target.url() + "/.well-known/agent-card.json";
+
+            long startTime = System.currentTimeMillis();
+            String status;
+            String errorMessage = null;
+            int latencyMs;
+            Throwable failureCause = null;
+
+            try {
+                ssrfValidator.validateSafeRemoteUrl(target.url());
+
+                AgentCard card = probeClient.get()
+                        .uri(URI.create(probeUrl))
+                        .retrieve()
+                        .body(AgentCard.class);
+
+                latencyMs = (int) (System.currentTimeMillis() - startTime);
+
+                if (card != null && card.name() != null) {
+                    status = latencyMs > DEGRADED_LATENCY_THRESHOLD_MS ? "DEGRADED" : "HEALTHY";
+                } else {
+                    status = "DEGRADED";
+                    errorMessage = "Agent card response missing required metadata";
+                }
+            } catch (Exception e) {
+                failureCause = e;
+                latencyMs = (int) (System.currentTimeMillis() - startTime);
+                status = "OFFLINE";
+                errorMessage = e.getMessage() != null ? e.getMessage() : "Connection failed";
+                log.debug("Health probe failed for agent {} ({}): {}", target.name(), target.id(), errorMessage);
+            }
+
+            long duration = System.currentTimeMillis() - startTime;
+            if ("OFFLINE".equals(status)) {
+                cb.onError(duration, TimeUnit.MILLISECONDS,
+                        failureCause != null ? failureCause : new RuntimeException(errorMessage != null ? errorMessage : "Health probe failed"));
+            } else {
+                cb.onSuccess(duration, TimeUnit.MILLISECONDS);
+            }
+
+            return new HealthCheckResult(target.id(), status, latencyMs, errorMessage);
+        } finally {
+            probeSemaphore.release();
+        }
+    }
+
+    private String extractHost(String url) {
+        if (url == null || url.isBlank()) {
+            return "unknown";
+        }
+        try {
+            URI uri = URI.create(url);
+            String host = uri.getHost();
+            if (host != null && !host.isBlank()) {
+                return host;
+            }
+        } catch (Exception ignored) {
+            // Fallback to raw URL if URI parsing fails
+        }
+        return url;
+    }
+
+    Semaphore getProbeSemaphore() {
+        return probeSemaphore;
+    }
+
+    CircuitBreakerRegistry getCircuitBreakerRegistry() {
+        return circuitBreakerRegistry;
     }
 
     /**
@@ -206,8 +305,8 @@ public class AgentHealthMonitor {
 
     public record AgentTarget(UUID id, String name, String url) {}
 
-    public record HealthCheckResult(UUID agentId, String status, int latencyMs, String error) {
-        public HealthCheckResult(UUID agentId, String status, int latencyMs, String error) {
+    public record HealthCheckResult(UUID agentId, String status, Integer latencyMs, String error) {
+        public HealthCheckResult(UUID agentId, String status, Integer latencyMs, String error) {
             this.agentId = agentId;
             this.status = status;
             this.latencyMs = latencyMs;

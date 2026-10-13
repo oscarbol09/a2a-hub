@@ -15,4 +15,5 @@ import org.springframework.validation.annotation.Validated;
 public class HealthProperties {
     @Positive private long intervalMs = 30000;
     @Positive private int retentionHours = 48;
+    @Positive private int maxConcurrentProbes = 25;
 }
