@@ -2,10 +2,11 @@
 import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import type { Agent } from '../services/api';
-import { Bot, Trash2, Activity, ShieldCheck, Cpu, RefreshCw, ArrowUpRight } from 'lucide-vue-next';
+import { Bot, Trash2, Activity, ShieldCheck, Cpu, RefreshCw, ArrowUpRight, Sparkles } from 'lucide-vue-next';
 
 const props = defineProps<{
-  agent: Agent
+  agent: Agent;
+  similarityScore?: number;
 }>();
 
 const emit = defineEmits<{
@@ -77,6 +78,12 @@ const goToDetail = () => {
   router.push(`/agents/${props.agent.id}`);
 };
 
+const displaySimilarityScore = computed(() => {
+  const score = props.similarityScore !== undefined ? props.similarityScore : props.agent.similarityScore;
+  if (score === undefined || score === null) return null;
+  return score <= 1 ? Math.round(score * 100) : Math.round(score);
+});
+
 defineExpose({
   probing,
   statusColor,
@@ -90,6 +97,7 @@ defineExpose({
   formattedTimestamp,
   handleQuickProbe,
   goToDetail,
+  displaySimilarityScore,
 });
 </script>
 
@@ -122,8 +130,17 @@ defineExpose({
         </div>
       </div>
 
-      <!-- Real-time Status Badge with Pulse -->
-      <div class="flex flex-col items-end gap-1">
+      <!-- Real-time Status Badge with Pulse & Similarity Match Badge -->
+      <div class="flex flex-col items-end gap-1.5">
+        <span
+          v-if="displaySimilarityScore !== null"
+          data-testid="similarity-match-badge"
+          class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-violet-50 text-violet-700 border border-violet-200"
+          :aria-label="displaySimilarityScore + '% Match'"
+        >
+          <Sparkles class="w-3 h-3 text-violet-500" aria-hidden="true" />
+          <span>{{ displaySimilarityScore }}% Match</span>
+        </span>
         <div
           class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border"
           :class="[statusBgClass, statusTextClass]"

@@ -89,6 +89,15 @@ const server = setupServer(
     return HttpResponse.json([]);
   }),
 
+  http.get(`${baseURL}/discover/semantic`, ({ request }) => {
+    const url = new URL(request.url);
+    const q = url.searchParams.get('q');
+    if (q === 'neural' || q === 'stock') {
+      return HttpResponse.json([sampleAgentFixture]);
+    }
+    return HttpResponse.json([]);
+  }),
+
   http.get(`${baseURL}/skills`, () => {
     const skills: SkillSummary[] = [
       {
@@ -182,6 +191,17 @@ describe('API Network Contracts with MSW', () => {
       expect(skillResponse.data).toHaveLength(1);
 
       const emptyResponse = await discoveryApi.discover({ tag: 'nonexistent' });
+      expect(emptyResponse.status).toBe(200);
+      expect(emptyResponse.data).toHaveLength(0);
+    });
+
+    it('discoverSemantic queries with semantic vector search parameters', async () => {
+      const response = await discoveryApi.discoverSemantic('neural', 10);
+      expect(response.status).toBe(200);
+      expect(response.data).toHaveLength(1);
+      expect(response.data[0].id).toBe(sampleAgentFixture.id);
+
+      const emptyResponse = await discoveryApi.discoverSemantic('unmatched');
       expect(emptyResponse.status).toBe(200);
       expect(emptyResponse.data).toHaveLength(0);
     });

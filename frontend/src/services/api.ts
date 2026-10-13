@@ -39,6 +39,7 @@ export interface Agent {
   registeredAt: string;
   lastSeenAt: string | null;
   latencyMs?: number;
+  similarityScore?: number;
 }
 
 export interface SkillSummary {
@@ -106,6 +107,7 @@ export const agentsApi = {
 
 export const discoveryApi = {
   discover: (params: DiscoverParams) => api.get<Agent[]>('/discover', { params }),
+  discoverSemantic: (q: string, limit = 20) => api.get<Agent[]>('/discover/semantic', { params: { q, limit } }),
   getSkills: () => api.get<SkillSummary[]>('/skills'),
   getTags: () => api.get<TagSummary[]>('/tags')
 };

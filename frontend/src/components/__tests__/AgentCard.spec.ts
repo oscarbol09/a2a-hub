@@ -294,4 +294,82 @@ describe('AgentCard Component', () => {
       expect(mockPush).not.toHaveBeenCalled();
     });
   });
+
+  describe('Semantic Vector Similarity Match Badge', () => {
+    it('renders similarity match badge with Sparkles icon and formatted percentage when similarityScore prop is passed', () => {
+      const wrapper = mount(AgentCard, {
+        props: {
+          agent: baseAgentFixture,
+          similarityScore: 0.94,
+        },
+      });
+
+      const badge = wrapper.find('[data-testid="similarity-match-badge"]');
+      expect(badge.exists()).toBe(true);
+      expect(badge.text()).toContain('94% Match');
+      expect(badge.classes()).toContain('bg-violet-50');
+      expect(badge.classes()).toContain('text-violet-700');
+      expect((wrapper.vm as any).displaySimilarityScore).toBe(94);
+    });
+
+    it('renders similarity match badge when agent.similarityScore is present on agent object and prop is omitted', () => {
+      const agentWithScore: Agent = {
+        ...baseAgentFixture,
+        similarityScore: 0.89,
+      };
+
+      const wrapper = mount(AgentCard, {
+        props: {
+          agent: agentWithScore,
+        },
+      });
+
+      const badge = wrapper.find('[data-testid="similarity-match-badge"]');
+      expect(badge.exists()).toBe(true);
+      expect(badge.text()).toContain('89% Match');
+    });
+
+    it('prefers similarityScore prop over agent.similarityScore when both are present', () => {
+      const agentWithScore: Agent = {
+        ...baseAgentFixture,
+        similarityScore: 0.80,
+      };
+
+      const wrapper = mount(AgentCard, {
+        props: {
+          agent: agentWithScore,
+          similarityScore: 0.98,
+        },
+      });
+
+      const badge = wrapper.find('[data-testid="similarity-match-badge"]');
+      expect(badge.exists()).toBe(true);
+      expect(badge.text()).toContain('98% Match');
+    });
+
+    it('does not render similarity badge when similarityScore is undefined', () => {
+      const wrapper = mount(AgentCard, {
+        props: {
+          agent: baseAgentFixture,
+        },
+      });
+
+      const badge = wrapper.find('[data-testid="similarity-match-badge"]');
+      expect(badge.exists()).toBe(false);
+      expect((wrapper.vm as any).displaySimilarityScore).toBeNull();
+    });
+
+    it('handles direct integer percentage scores appropriately (e.g. 95 -> 95%)', () => {
+      const wrapper = mount(AgentCard, {
+        props: {
+          agent: baseAgentFixture,
+          similarityScore: 95,
+        },
+      });
+
+      const badge = wrapper.find('[data-testid="similarity-match-badge"]');
+      expect(badge.exists()).toBe(true);
+      expect(badge.text()).toContain('95% Match');
+    });
+  });
 });

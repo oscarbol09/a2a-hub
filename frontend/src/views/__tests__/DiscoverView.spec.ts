@@ -416,4 +416,155 @@ describe('DiscoverView Component', () => {
       expect((wrapper.vm as any).loading).toBe(false);
     });
   });
+
+  describe('Semantic Vector Search Mode & Visual Similarity Scores', () => {
+    it('toggles between keyword and semantic search mode and updates active UI controls', async () => {
+      const discoverSpy = vi.spyOn(discoveryApi, 'discover').mockResolvedValue({ data: [mockAgent1] } as any);
+      const semanticSpy = vi.spyOn(discoveryApi, 'discoverSemantic').mockResolvedValue({ data: [mockAgent2] } as any);
+      vi.spyOn(discoveryApi, 'getSkills').mockResolvedValue({ data: mockSkills } as any);
+      vi.spyOn(discoveryApi, 'getTags').mockResolvedValue({ data: mockTags } as any);
+
+      const wrapper = mount(DiscoverView);
+      await flushPromises();
+
+      // Initial state: keyword mode
+      expect((wrapper.vm as any).searchMode).toBe('keyword');
+      expect(wrapper.text()).toContain('Skills Catalog');
+      expect(wrapper.text()).toContain('Tags');
+      expect(wrapper.text()).not.toContain('AI vector search ranks registered agents');
+
+      // Toggle to AI Semantic Search
+      const buttons = wrapper.findAll('div[role="group"][aria-label="Search mode"] button');
+      const semanticBtn = buttons[1];
+      expect(semanticBtn.text()).toContain('AI Semantic Search');
+
+      semanticSpy.mockClear();
+      await semanticBtn.trigger('click');
+      await flushPromises();
+
+      expect((wrapper.vm as any).searchMode).toBe('semantic');
+      expect(semanticSpy).toHaveBeenCalledTimes(1);
+      expect(wrapper.text()).toContain('AI vector search ranks registered agents');
+      expect(wrapper.text()).toContain('Semantic Vector Results');
+      // Skills and tag badges should be bypassed / hidden
+      expect(wrapper.text()).not.toContain('Skills Catalog');
+      expect(wrapper.findAllComponents({ name: 'SkillBadge' })).toHaveLength(0);
+
+      // Toggle back to Keyword Search
+      const keywordBtn = buttons[0];
+      discoverSpy.mockClear();
+      await keywordBtn.trigger('click');
+      await flushPromises();
+
+      expect((wrapper.vm as any).searchMode).toBe('keyword');
+      expect(discoverSpy).toHaveBeenCalledTimes(1);
+      expect(wrapper.text()).toContain('Skills Catalog');
+      expect(wrapper.findAllComponents({ name: 'SkillBadge' }).length).toBeGreaterThan(0);
+    });
+
+    it('debounces user typing in semantic mode by 300ms and calls discoveryApi.discoverSemantic', async () => {
+      vi.useFakeTimers();
+      vi.spyOn(discoveryApi, 'discover').mockResolvedValue({ data: [mockAgent1] } as any);
+      const semanticSpy = vi.spyOn(discoveryApi, 'discoverSemantic').mockResolvedValue({ data: [mockAgent2] } as any);
+      vi.spyOn(discoveryApi, 'getSkills').mockResolvedValue({ data: mockSkills } as any);
+      vi.spyOn(discoveryApi, 'getTags').mockResolvedValue({ data: mockTags } as any);
+
+      const wrapper = mount(DiscoverView);
+      await flushPromises();
+
+      // Switch to semantic mode
+      await (wrapper.vm as any).setSearchMode('semantic');
+      await flushPromises();
+      semanticSpy.mockClear();
+
+      const searchInput = wrapper.find('input[type="text"]');
+      await searchInput.setValue('portfolio analysis and risk');
+
+      // Before 300ms, discoverSemantic is not called
+      expect(semanticSpy).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(200);
+      expect(semanticSpy).not.toHaveBeenCalled();
+
+      // Complete debounce timer
+      vi.advanceTimersByTime(100);
+      await flushPromises();
+
+      expect(semanticSpy).toHaveBeenCalledTimes(1);
+      expect(semanticSpy).toHaveBeenCalledWith('portfolio analysis and risk');
+
+      vi.useRealTimers();
+    });
+
+    it('assigns descending graduated similarity scores to results and renders match badges on cards', async () => {
+      vi.spyOn(discoveryApi, 'discover').mockResolvedValue({ data: [] } as any);
+      vi.spyOn(discoveryApi, 'discoverSemantic').mockResolvedValue({ data: [mockAgent1, mockAgent2] } as any);
+      vi.spyOn(discoveryApi, 'getSkills').mockResolvedValue({ data: [] } as any);
+      vi.spyOn(discoveryApi, 'getTags').mockResolvedValue({ data: [] } as any);
+
+      const wrapper = mount(DiscoverView);
+      await flushPromises();
+
+      // Switch to semantic mode
+      await (wrapper.vm as any).setSearchMode('semantic');
+      await flushPromises();
+
+      // Check agent models
+      const agents = (wrapper.vm as any).agents;
+      expect(agents).toHaveLength(2);
+      expect(agents[0].similarityScore).toBe(0.98);
+      expect(agents[1].similarityScore).toBe(0.94);
+
+      // Verify AgentCard components receive similarityScore prop
+      const agentCards = wrapper.findAllComponents({ name: 'AgentCard' });
+      expect(agentCards).toHaveLength(2);
+      expect(agentCards[0].props('similarityScore')).toBe(0.98);
+      expect(agentCards[1].props('similarityScore')).toBe(0.94);
+
+      // Verify badges rendered in card text
+      expect(wrapper.text()).toContain('98% Match');
+      expect(wrapper.text()).toContain('94% Match');
+    });
+
+    it('removes visual similarity scores when switching back to keyword mode', async () => {
+      vi.spyOn(discoveryApi, 'discover').mockResolvedValue({ data: [mockAgent1, mockAgent2] } as any);
+      vi.spyOn(discoveryApi, 'discoverSemantic').mockResolvedValue({ data: [mockAgent1, mockAgent2] } as any);
+      vi.spyOn(discoveryApi, 'getSkills').mockResolvedValue({ data: mockSkills } as any);
+      vi.spyOn(discoveryApi, 'getTags').mockResolvedValue({ data: mockTags } as any);
+
+      const wrapper = mount(DiscoverView);
+      await flushPromises();
+
+      // Switch to semantic
+      await (wrapper.vm as any).setSearchMode('semantic');
+      await flushPromises();
+      expect(wrapper.text()).toContain('98% Match');
+
+      // Switch back to keyword
+      await (wrapper.vm as any).setSearchMode('keyword');
+      await flushPromises();
+
+      const agentCards = wrapper.findAllComponents({ name: 'AgentCard' });
+      expect(agentCards[0].props('similarityScore')).toBeUndefined();
+      expect(wrapper.text()).not.toContain('Match');
+    });
+
+    it('handles semantic search errors and sets error message', async () => {
+      vi.spyOn(discoveryApi, 'discover').mockResolvedValue({ data: [mockAgent1] } as any);
+      vi.spyOn(discoveryApi, 'discoverSemantic').mockRejectedValue({
+        response: { data: { message: 'Semantic vector index offline' } },
+      });
+      vi.spyOn(discoveryApi, 'getSkills').mockResolvedValue({ data: [] } as any);
+      vi.spyOn(discoveryApi, 'getTags').mockResolvedValue({ data: [] } as any);
+
+      const wrapper = mount(DiscoverView);
+      await flushPromises();
+
+      await (wrapper.vm as any).setSearchMode('semantic');
+      await flushPromises();
+
+      expect(wrapper.text()).toContain('Semantic vector index offline');
+      expect((wrapper.vm as any).loading).toBe(false);
+    });
+  });
 });

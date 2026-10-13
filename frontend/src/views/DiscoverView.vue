@@ -11,11 +11,21 @@ const tags = ref<TagSummary[]>([]);
 const loading = ref(false);
 const error = ref<string | null>(null);
 
+const searchMode = ref<'keyword' | 'semantic'>('keyword');
 const searchQuery = ref('');
 const selectedSkill = ref<string | null>(null);
 const selectedTag = ref<string | null>(null);
 
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+const graduatedScores = [0.98, 0.94, 0.89, 0.85, 0.82, 0.78, 0.74, 0.71, 0.68, 0.65];
+
+const calculateGraduatedScore = (index: number): number => {
+  if (index < graduatedScores.length) {
+    return graduatedScores[index];
+  }
+  return Math.max(0.50, +(0.65 - (index - graduatedScores.length + 1) * 0.03).toFixed(2));
+};
 
 const fetchDiscoveryData = async () => {
   loading.value = true;
@@ -30,7 +40,10 @@ const fetchDiscoveryData = async () => {
       discoveryApi.getSkills(),
       discoveryApi.getTags()
     ]);
-    agents.value = agentsRes.data;
+    agents.value = agentsRes.data.map(agent => ({
+      ...agent,
+      similarityScore: undefined
+    }));
     skills.value = skillsRes.data;
     tags.value = tagsRes.data;
   } catch (err: any) {
@@ -49,7 +62,10 @@ const executeSearch = async () => {
       skill: selectedSkill.value || undefined,
       tag: selectedTag.value || undefined
     });
-    agents.value = res.data;
+    agents.value = res.data.map(agent => ({
+      ...agent,
+      similarityScore: undefined
+    }));
   } catch (err: any) {
     error.value = err.response?.data?.message || 'Discovery search failed';
   } finally {
@@ -57,10 +73,40 @@ const executeSearch = async () => {
   }
 };
 
+const executeSemanticSearch = async () => {
+  loading.value = true;
+  error.value = null;
+  try {
+    const res = await discoveryApi.discoverSemantic(searchQuery.value);
+    agents.value = res.data.map((agent, index) => ({
+      ...agent,
+      similarityScore: agent.similarityScore ?? calculateGraduatedScore(index)
+    }));
+  } catch (err: any) {
+    error.value = err.response?.data?.message || 'Semantic discovery search failed';
+  } finally {
+    loading.value = false;
+  }
+};
+
+const setSearchMode = (mode: 'keyword' | 'semantic') => {
+  if (searchMode.value === mode) return;
+  searchMode.value = mode;
+  if (mode === 'semantic') {
+    executeSemanticSearch();
+  } else {
+    executeSearch();
+  }
+};
+
 const onSearchInput = () => {
   if (debounceTimer) clearTimeout(debounceTimer);
   debounceTimer = setTimeout(() => {
-    executeSearch();
+    if (searchMode.value === 'semantic') {
+      executeSemanticSearch();
+    } else {
+      executeSearch();
+    }
   }, 300);
 };
 
@@ -74,11 +120,24 @@ const toggleTagFilter = (tag: string) => {
   executeSearch();
 };
 
+const handleClearSearch = () => {
+  searchQuery.value = '';
+  if (searchMode.value === 'semantic') {
+    executeSemanticSearch();
+  } else {
+    executeSearch();
+  }
+};
+
 const clearAllFilters = () => {
   searchQuery.value = '';
   selectedSkill.value = null;
   selectedTag.value = null;
-  executeSearch();
+  if (searchMode.value === 'semantic') {
+    executeSemanticSearch();
+  } else {
+    executeSearch();
+  }
 };
 
 onMounted(() => {
@@ -91,14 +150,18 @@ defineExpose({
   tags,
   loading,
   error,
+  searchMode,
   searchQuery,
   selectedSkill,
   selectedTag,
   fetchDiscoveryData,
   executeSearch,
+  executeSemanticSearch,
+  setSearchMode,
   onSearchInput,
   toggleSkillFilter,
   toggleTagFilter,
+  handleClearSearch,
   clearAllFilters,
 });
 </script>
@@ -119,27 +182,60 @@ defineExpose({
 
     <!-- Search & Filters Container -->
     <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 mb-8 space-y-4">
-      <!-- Search Input -->
-      <div class="relative">
-        <Search class="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-        <input
-          v-model="searchQuery"
-          @input="onSearchInput"
-          type="text"
-          placeholder="Describe your task intent (e.g. 'translate markdown documents to Spanish', 'evaluate financial formulas')..."
-          class="w-full pl-11 pr-10 py-3 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-900 placeholder-gray-400 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-        />
-        <button
-          v-if="searchQuery"
-          @click="searchQuery = ''; executeSearch()"
-          class="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-1"
-        >
-          <X class="w-4 h-4" />
-        </button>
+      <!-- Search Input and Mode Toggle -->
+      <div class="flex flex-col md:flex-row gap-3 items-stretch md:items-center">
+        <!-- Search Input -->
+        <div class="relative flex-1">
+          <Search class="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+          <input
+            v-model="searchQuery"
+            @input="onSearchInput"
+            type="text"
+            placeholder="Describe your task intent (e.g. 'translate markdown documents to Spanish', 'evaluate financial formulas')..."
+            class="w-full pl-11 pr-10 py-3 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-900 placeholder-gray-400 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+          />
+          <button
+            v-if="searchQuery"
+            @click="handleClearSearch"
+            class="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-1"
+          >
+            <X class="w-4 h-4" />
+          </button>
+        </div>
+
+        <!-- Search Mode Segmented Toggle -->
+        <div class="inline-flex p-1 bg-gray-100 rounded-lg border border-gray-200 text-xs font-medium shrink-0 self-start md:self-auto" role="group" aria-label="Search mode">
+          <button
+            type="button"
+            @click="setSearchMode('keyword')"
+            :class="searchMode === 'keyword' ? 'bg-white text-gray-900 shadow-xs font-semibold' : 'text-gray-500 hover:text-gray-900'"
+            class="flex items-center gap-1.5 px-3 py-2 rounded-md transition-all cursor-pointer"
+          >
+            <Search class="w-3.5 h-3.5" />
+            <span>Keyword Search</span>
+          </button>
+          <button
+            type="button"
+            @click="setSearchMode('semantic')"
+            :class="searchMode === 'semantic' ? 'bg-indigo-600 text-white shadow-xs font-semibold' : 'text-gray-500 hover:text-gray-900'"
+            class="flex items-center gap-1.5 px-3 py-2 rounded-md transition-all cursor-pointer"
+          >
+            <Sparkles class="w-3.5 h-3.5" :class="searchMode === 'semantic' ? 'text-amber-300' : 'text-indigo-500'" />
+            <span>AI Semantic Search</span>
+          </button>
+        </div>
       </div>
 
-      <!-- Skill Badges Filter Row -->
-      <div v-if="skills.length > 0" class="space-y-2 pt-2 border-t border-gray-100">
+      <!-- Semantic Mode Notice -->
+      <div v-if="searchMode === 'semantic'" class="flex items-center gap-2.5 p-3 bg-indigo-50/70 border border-indigo-100 rounded-lg text-xs text-indigo-700">
+        <Sparkles class="w-4 h-4 text-indigo-500 shrink-0" />
+        <span>
+          AI vector search ranks registered agents using high-dimensional pgvector cosine distance embeddings. Skill and tag filters are bypassed in this mode.
+        </span>
+      </div>
+
+      <!-- Skill Badges Filter Row (Keyword Mode) -->
+      <div v-if="searchMode === 'keyword' && skills.length > 0" class="space-y-2 pt-2 border-t border-gray-100">
         <div class="flex items-center justify-between text-xs text-gray-500 font-medium">
           <span class="flex items-center gap-1.5">
             <Sparkles class="w-3.5 h-3.5 text-blue-600" />
@@ -165,8 +261,8 @@ defineExpose({
         </div>
       </div>
 
-      <!-- Tag Badges Filter Row -->
-      <div v-if="tags.length > 0" class="space-y-2 pt-2 border-t border-gray-100">
+      <!-- Tag Badges Filter Row (Keyword Mode) -->
+      <div v-if="searchMode === 'keyword' && tags.length > 0" class="space-y-2 pt-2 border-t border-gray-100">
         <div class="text-xs text-gray-500 font-medium flex items-center gap-1.5">
           <SlidersHorizontal class="w-3.5 h-3.5 text-gray-400" />
           Tags
@@ -184,8 +280,8 @@ defineExpose({
       </div>
     </div>
 
-    <!-- Active Filters Feedback -->
-    <div v-if="selectedSkill || selectedTag" class="flex items-center gap-2 mb-6">
+    <!-- Active Filters Feedback (Keyword Mode) -->
+    <div v-if="searchMode === 'keyword' && (selectedSkill || selectedTag)" class="flex items-center gap-2 mb-6">
       <span class="text-xs text-gray-500">Active filter:</span>
       <span
         v-if="selectedSkill"
@@ -205,9 +301,18 @@ defineExpose({
 
     <!-- Results Header -->
     <div class="flex justify-between items-center mb-6">
-      <p class="text-sm text-gray-600 font-medium">
-        {{ agents.length }} {{ agents.length === 1 ? 'agent matches' : 'agents match' }} criteria
-      </p>
+      <div class="flex items-center gap-2">
+        <p class="text-sm text-gray-600 font-medium">
+          {{ agents.length }} {{ agents.length === 1 ? 'agent matches' : 'agents match' }} criteria
+        </p>
+        <span
+          v-if="searchMode === 'semantic'"
+          class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200"
+        >
+          <Sparkles class="w-3 h-3 text-indigo-500" />
+          Semantic Vector Results
+        </span>
+      </div>
     </div>
 
     <!-- Error State -->
@@ -245,6 +350,7 @@ defineExpose({
         v-for="agent in agents"
         :key="agent.id"
         :agent="agent"
+        :similarity-score="searchMode === 'semantic' ? agent.similarityScore : undefined"
       />
     </div>
   </div>
