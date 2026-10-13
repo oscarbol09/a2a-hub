@@ -213,4 +213,247 @@ class TaskServiceTest {
         assertThat(result.task().state()).isEqualTo("SUBMITTED");
         verify(persistenceService).createSubmittedTask(eq(agent), eq("ctx-async"), any());
     }
+
+    @Test
+    @DisplayName("Should forward Authorization header when agent has BEARER authType")
+    @SuppressWarnings("unchecked")
+    void shouldForwardAuthorizationHeaderWhenAgentHasBearerAuth() {
+        UUID agentId = UUID.randomUUID();
+        Agent agent = new Agent();
+        agent.setId(agentId);
+        agent.setName("BearerAgent");
+        agent.setUrl("https://bearer.agent.io");
+        agent.setStatus("HEALTHY");
+        agent.setAuthType("BEARER");
+        agent.setAuthTokenEnc("my-secret-token");
+
+        when(agentRepository.findById(agentId)).thenReturn(Optional.of(agent));
+
+        UUID initialTaskId = UUID.randomUUID();
+        TaskService.TaskDto initialDto = new TaskService.TaskDto(
+                initialTaskId,
+                agentId,
+                agent.getName(),
+                "ctx-bearer",
+                TaskState.SUBMITTED.name(),
+                Map.of("query", "test"),
+                null,
+                null,
+                java.time.ZonedDateTime.now(),
+                java.time.ZonedDateTime.now()
+        );
+        when(persistenceService.createSubmittedTask(eq(agent), eq("ctx-bearer"), any())).thenReturn(initialDto);
+
+        when(restClient.post()).thenReturn(requestBodyUriSpec);
+        when(requestBodyUriSpec.uri(any(URI.class))).thenReturn(requestBodySpec);
+        when(requestBodySpec.contentType(MediaType.APPLICATION_JSON)).thenReturn(requestBodySpec);
+        when(requestBodySpec.header(anyString(), anyString())).thenReturn(requestBodySpec);
+        when(requestBodySpec.body(any(Object.class))).thenReturn(requestBodySpec);
+        when(requestBodySpec.retrieve()).thenReturn(responseSpec);
+        when(responseSpec.body(any(ParameterizedTypeReference.class))).thenReturn(Map.of("status", "ok"));
+
+        TaskService.SubmitTaskRequest request = new TaskService.SubmitTaskRequest(agentId, "ctx-bearer", Map.of("query", "test"), false);
+        taskService.submitTask(request, false);
+
+        verify(requestBodySpec).header("Authorization", "Bearer my-secret-token");
+        verify(requestBodySpec, never()).header(eq("X-API-Key"), anyString());
+    }
+
+    @Test
+    @DisplayName("Should not duplicate Bearer prefix if token already starts with Bearer")
+    @SuppressWarnings("unchecked")
+    void shouldNotDuplicateBearerPrefixIfAlreadyPresent() {
+        UUID agentId = UUID.randomUUID();
+        Agent agent = new Agent();
+        agent.setId(agentId);
+        agent.setName("BearerAgent");
+        agent.setUrl("https://bearer.agent.io");
+        agent.setStatus("HEALTHY");
+        agent.setAuthType("BEARER");
+        agent.setAuthTokenEnc("Bearer prefixed-token");
+
+        when(agentRepository.findById(agentId)).thenReturn(Optional.of(agent));
+
+        UUID initialTaskId = UUID.randomUUID();
+        TaskService.TaskDto initialDto = new TaskService.TaskDto(
+                initialTaskId,
+                agentId,
+                agent.getName(),
+                "ctx-bearer-prefixed",
+                TaskState.SUBMITTED.name(),
+                Map.of("query", "test"),
+                null,
+                null,
+                java.time.ZonedDateTime.now(),
+                java.time.ZonedDateTime.now()
+        );
+        when(persistenceService.createSubmittedTask(eq(agent), eq("ctx-bearer-prefixed"), any())).thenReturn(initialDto);
+
+        when(restClient.post()).thenReturn(requestBodyUriSpec);
+        when(requestBodyUriSpec.uri(any(URI.class))).thenReturn(requestBodySpec);
+        when(requestBodySpec.contentType(MediaType.APPLICATION_JSON)).thenReturn(requestBodySpec);
+        when(requestBodySpec.header(anyString(), anyString())).thenReturn(requestBodySpec);
+        when(requestBodySpec.body(any(Object.class))).thenReturn(requestBodySpec);
+        when(requestBodySpec.retrieve()).thenReturn(responseSpec);
+        when(responseSpec.body(any(ParameterizedTypeReference.class))).thenReturn(Map.of("status", "ok"));
+
+        TaskService.SubmitTaskRequest request = new TaskService.SubmitTaskRequest(agentId, "ctx-bearer-prefixed", Map.of("query", "test"), false);
+        taskService.submitTask(request, false);
+
+        verify(requestBodySpec).header("Authorization", "Bearer prefixed-token");
+    }
+
+    @Test
+    @DisplayName("Should forward X-API-Key header when agent has API_KEY authType")
+    @SuppressWarnings("unchecked")
+    void shouldForwardXApiKeyHeaderWhenAgentHasApiKeyAuth() {
+        UUID agentId = UUID.randomUUID();
+        Agent agent = new Agent();
+        agent.setId(agentId);
+        agent.setName("ApiKeyAgent");
+        agent.setUrl("https://apikey.agent.io");
+        agent.setStatus("HEALTHY");
+        agent.setAuthType("API_KEY");
+        agent.setAuthTokenEnc("secret-key-123");
+
+        when(agentRepository.findById(agentId)).thenReturn(Optional.of(agent));
+
+        UUID initialTaskId = UUID.randomUUID();
+        TaskService.TaskDto initialDto = new TaskService.TaskDto(
+                initialTaskId,
+                agentId,
+                agent.getName(),
+                "ctx-apikey",
+                TaskState.SUBMITTED.name(),
+                Map.of("query", "test"),
+                null,
+                null,
+                java.time.ZonedDateTime.now(),
+                java.time.ZonedDateTime.now()
+        );
+        when(persistenceService.createSubmittedTask(eq(agent), eq("ctx-apikey"), any())).thenReturn(initialDto);
+
+        when(restClient.post()).thenReturn(requestBodyUriSpec);
+        when(requestBodyUriSpec.uri(any(URI.class))).thenReturn(requestBodySpec);
+        when(requestBodySpec.contentType(MediaType.APPLICATION_JSON)).thenReturn(requestBodySpec);
+        when(requestBodySpec.header(anyString(), anyString())).thenReturn(requestBodySpec);
+        when(requestBodySpec.body(any(Object.class))).thenReturn(requestBodySpec);
+        when(requestBodySpec.retrieve()).thenReturn(responseSpec);
+        when(responseSpec.body(any(ParameterizedTypeReference.class))).thenReturn(Map.of("status", "ok"));
+
+        TaskService.SubmitTaskRequest request = new TaskService.SubmitTaskRequest(agentId, "ctx-apikey", Map.of("query", "test"), false);
+        taskService.submitTask(request, false);
+
+        verify(requestBodySpec).header("X-API-Key", "secret-key-123");
+        verify(requestBodySpec, never()).header(eq("Authorization"), anyString());
+    }
+
+    @Test
+    @DisplayName("Should not forward Authorization or X-API-Key headers when authType is NONE or token is null")
+    @SuppressWarnings("unchecked")
+    void shouldNotForwardAuthHeadersWhenAuthTypeNoneOrTokenNull() {
+        UUID agentId = UUID.randomUUID();
+        Agent agent = new Agent();
+        agent.setId(agentId);
+        agent.setName("NoAuthAgent");
+        agent.setUrl("https://noauth.agent.io");
+        agent.setStatus("HEALTHY");
+        agent.setAuthType("NONE");
+        agent.setAuthTokenEnc(null);
+
+        when(agentRepository.findById(agentId)).thenReturn(Optional.of(agent));
+
+        UUID initialTaskId = UUID.randomUUID();
+        TaskService.TaskDto initialDto = new TaskService.TaskDto(
+                initialTaskId,
+                agentId,
+                agent.getName(),
+                "ctx-noauth",
+                TaskState.SUBMITTED.name(),
+                Map.of("query", "test"),
+                null,
+                null,
+                java.time.ZonedDateTime.now(),
+                java.time.ZonedDateTime.now()
+        );
+        when(persistenceService.createSubmittedTask(eq(agent), eq("ctx-noauth"), any())).thenReturn(initialDto);
+
+        when(restClient.post()).thenReturn(requestBodyUriSpec);
+        when(requestBodyUriSpec.uri(any(URI.class))).thenReturn(requestBodySpec);
+        when(requestBodySpec.contentType(MediaType.APPLICATION_JSON)).thenReturn(requestBodySpec);
+        when(requestBodySpec.header(anyString(), anyString())).thenReturn(requestBodySpec);
+        when(requestBodySpec.body(any(Object.class))).thenReturn(requestBodySpec);
+        when(requestBodySpec.retrieve()).thenReturn(responseSpec);
+        when(responseSpec.body(any(ParameterizedTypeReference.class))).thenReturn(Map.of("status", "ok"));
+
+        TaskService.SubmitTaskRequest request = new TaskService.SubmitTaskRequest(agentId, "ctx-noauth", Map.of("query", "test"), false);
+        taskService.submitTask(request, false);
+
+        verify(requestBodySpec, never()).header(eq("Authorization"), anyString());
+        verify(requestBodySpec, never()).header(eq("X-API-Key"), anyString());
+    }
+
+    @Test
+    @DisplayName("Backward-compatible executeDownstreamProxy overload dispatches without auth headers")
+    @SuppressWarnings("unchecked")
+    void shouldSupportBackwardCompatibleExecuteDownstreamProxy() {
+        UUID taskId = UUID.randomUUID();
+        when(restClient.post()).thenReturn(requestBodyUriSpec);
+        when(requestBodyUriSpec.uri(any(URI.class))).thenReturn(requestBodySpec);
+        when(requestBodySpec.contentType(MediaType.APPLICATION_JSON)).thenReturn(requestBodySpec);
+        when(requestBodySpec.header(anyString(), anyString())).thenReturn(requestBodySpec);
+        when(requestBodySpec.body(any(Object.class))).thenReturn(requestBodySpec);
+        when(requestBodySpec.retrieve()).thenReturn(responseSpec);
+        when(responseSpec.body(any(ParameterizedTypeReference.class))).thenReturn(Map.of("status", "ok"));
+
+        taskService.executeDownstreamProxy(taskId, "ctx-legacy", "LegacyAgent", "https://legacy.agent.io", Map.of("query", "legacy"), "corr-legacy", "trace-legacy");
+
+        verify(requestBodySpec, never()).header(eq("Authorization"), anyString());
+        verify(requestBodySpec, never()).header(eq("X-API-Key"), anyString());
+    }
+
+    @Test
+    @DisplayName("Should forward auth headers in async task execution")
+    @SuppressWarnings("unchecked")
+    void shouldForwardAuthHeadersInAsyncMode() {
+        UUID agentId = UUID.randomUUID();
+        Agent agent = new Agent();
+        agent.setId(agentId);
+        agent.setName("AsyncAuthAgent");
+        agent.setUrl("https://async-auth.agent.io");
+        agent.setStatus("HEALTHY");
+        agent.setAuthType("BEARER");
+        agent.setAuthTokenEnc("async-bearer-token");
+
+        when(agentRepository.findById(agentId)).thenReturn(Optional.of(agent));
+
+        UUID initialTaskId = UUID.randomUUID();
+        TaskService.TaskDto initialDto = new TaskService.TaskDto(
+                initialTaskId,
+                agentId,
+                agent.getName(),
+                "ctx-async-auth",
+                TaskState.SUBMITTED.name(),
+                Map.of("query", "test"),
+                null,
+                null,
+                java.time.ZonedDateTime.now(),
+                java.time.ZonedDateTime.now()
+        );
+        when(persistenceService.createSubmittedTask(eq(agent), eq("ctx-async-auth"), any())).thenReturn(initialDto);
+
+        when(restClient.post()).thenReturn(requestBodyUriSpec);
+        when(requestBodyUriSpec.uri(any(URI.class))).thenReturn(requestBodySpec);
+        when(requestBodySpec.contentType(MediaType.APPLICATION_JSON)).thenReturn(requestBodySpec);
+        when(requestBodySpec.header(anyString(), anyString())).thenReturn(requestBodySpec);
+        when(requestBodySpec.body(any(Object.class))).thenReturn(requestBodySpec);
+        when(requestBodySpec.retrieve()).thenReturn(responseSpec);
+        when(responseSpec.body(any(ParameterizedTypeReference.class))).thenReturn(Map.of("status", "ok"));
+
+        TaskService.SubmitTaskRequest request = new TaskService.SubmitTaskRequest(agentId, "ctx-async-auth", Map.of("query", "test"), true);
+        TaskService.TaskExecutionResponse result = taskService.submitTask(request, true);
+
+        assertThat(result.isAsync()).isTrue();
+        verify(requestBodySpec, timeout(2000)).header("Authorization", "Bearer async-bearer-token");
+    }
 }

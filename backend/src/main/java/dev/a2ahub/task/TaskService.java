@@ -101,11 +101,13 @@ public class TaskService {
         if (asyncRequested) {
             String agentUrl = agent.getUrl();
             String agentName = agent.getName();
+            String authType = agent.getAuthType();
+            String authToken = agent.getAuthTokenEnc();
             log.info("Dispatching async task {} for agent {} to virtual thread executor", submittedTask.id(), agentName);
             taskExecutor.execute(() -> {
                 try {
                     log.info("Starting background proxy execution for task {}", submittedTask.id());
-                    executeDownstreamProxy(submittedTask.id(), submittedTask.contextId(), agentName, agentUrl, submitRequest.payload(), correlationId, traceparent);
+                    executeDownstreamProxy(submittedTask.id(), submittedTask.contextId(), agentName, agentUrl, submitRequest.payload(), correlationId, traceparent, authType, authToken);
                     log.info("Completed background proxy execution for task {}", submittedTask.id());
                 } catch (Throwable t) {
                     log.error("Fatal failure in background proxy execution for task {}: {}", submittedTask.id(), t.getMessage(), t);
@@ -114,25 +116,46 @@ public class TaskService {
             return new TaskExecutionResponse(submittedTask, true);
         } else {
             // Synchronous execution on current Virtual Thread
-            TaskDto completedDto = executeDownstreamProxy(submittedTask.id(), submittedTask.contextId(), agent.getName(), agent.getUrl(), submitRequest.payload(), correlationId, traceparent);
+            TaskDto completedDto = executeDownstreamProxy(submittedTask.id(), submittedTask.contextId(), agent.getName(), agent.getUrl(), submitRequest.payload(), correlationId, traceparent, agent.getAuthType(), agent.getAuthTokenEnc());
             return new TaskExecutionResponse(completedDto, false);
         }
     }
 
+    /**
+     * Backward-compatible overload for proxying without downstream authentication credentials.
+     */
     public TaskDto executeDownstreamProxy(UUID taskId, String contextId, String agentName, String agentUrl, Map<String, ?> payload, String correlationId, String traceparent) {
+        return executeDownstreamProxy(taskId, contextId, agentName, agentUrl, payload, correlationId, traceparent, null, null);
+    }
+
+    /**
+     * Dispatches task to downstream agent with optional Bearer or API_KEY authentication headers.
+     */
+    public TaskDto executeDownstreamProxy(UUID taskId, String contextId, String agentName, String agentUrl, Map<String, ?> payload, String correlationId, String traceparent, String authType, String authToken) {
         String endpoint = agentUrl.endsWith("/") ? agentUrl + "tasks" : agentUrl + "/tasks";
         TaskState finalState;
         Map<String, Object> responseBody = null;
         String errorMessage = null;
 
         try {
-            responseBody = restClient.post()
+            RestClient.RequestBodySpec requestSpec = restClient.post()
                     .uri(URI.create(endpoint))
                     .contentType(MediaType.APPLICATION_JSON)
                     .header("X-Correlation-Id", correlationId)
                     .header("X-Context-Id", contextId)
                     .header("X-Task-Id", taskId.toString())
-                    .header("traceparent", traceparent)
+                    .header("traceparent", traceparent);
+
+            if (authToken != null && !authToken.isBlank() && authType != null) {
+                String token = authToken.trim();
+                if ("BEARER".equalsIgnoreCase(authType)) {
+                    requestSpec.header("Authorization", token.startsWith("Bearer ") ? token : "Bearer " + token);
+                } else if ("API_KEY".equalsIgnoreCase(authType)) {
+                    requestSpec.header("X-API-Key", token);
+                }
+            }
+
+            responseBody = requestSpec
                     .body(payload)
                     .retrieve()
                     .body(new ParameterizedTypeReference<Map<String, Object>>() {});
