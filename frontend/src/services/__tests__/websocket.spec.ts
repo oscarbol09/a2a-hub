@@ -104,6 +104,51 @@ describe('WebSocketService', () => {
         import.meta.env.VITE_WS_HOST = originalWsHost;
       }
     });
+
+    it('resolves relative VITE_WS_URL against the page origin with ws:// when protocol is http:', () => {
+      delete (window as any).location;
+      (window as any).location = { protocol: 'http:', host: 'localhost:3000' };
+
+      const originalWsUrl = import.meta.env.VITE_WS_URL;
+      import.meta.env.VITE_WS_URL = '/ws';
+
+      try {
+        service.connect();
+        expect(capturedClientOptions.brokerURL).toBe('ws://localhost:3000/ws');
+      } finally {
+        import.meta.env.VITE_WS_URL = originalWsUrl;
+      }
+    });
+
+    it('resolves relative VITE_WS_URL against the page origin with wss:// when protocol is https:', () => {
+      delete (window as any).location;
+      (window as any).location = { protocol: 'https:', host: 'localhost:3000' };
+
+      const originalWsUrl = import.meta.env.VITE_WS_URL;
+      import.meta.env.VITE_WS_URL = '/ws';
+
+      try {
+        service.connect();
+        expect(capturedClientOptions.brokerURL).toBe('wss://localhost:3000/ws');
+      } finally {
+        import.meta.env.VITE_WS_URL = originalWsUrl;
+      }
+    });
+
+    it('leaves absolute VITE_WS_URL untouched regardless of the page origin', () => {
+      delete (window as any).location;
+      (window as any).location = { protocol: 'http:', host: 'localhost:3000' };
+
+      const originalWsUrl = import.meta.env.VITE_WS_URL;
+      import.meta.env.VITE_WS_URL = 'wss://remote.hub/ws';
+
+      try {
+        service.connect();
+        expect(capturedClientOptions.brokerURL).toBe('wss://remote.hub/ws');
+      } finally {
+        import.meta.env.VITE_WS_URL = originalWsUrl;
+      }
+    });
   });
 
   describe('Connection Lifecycle & Idempotency', () => {
@@ -189,7 +234,7 @@ describe('WebSocketService', () => {
     });
 
     it('handles malformed JSON broker messages gracefully with error logging and no listener exceptions', () => {
-      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
       const listener = vi.fn();
 
       service.onStatusChange(listener);
@@ -279,7 +324,7 @@ describe('WebSocketService', () => {
     });
 
     it('handles malformed JSON on /topic/tasks broker messages gracefully with error logging', () => {
-      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
       const listener = vi.fn();
 
       service.onTaskUpdate(listener);
@@ -341,7 +386,7 @@ describe('WebSocketService', () => {
     });
 
     it('logs STOMP broker errors when onStompError is triggered', () => {
-      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
 
       service.connect('ws://localhost:8080/ws');
 

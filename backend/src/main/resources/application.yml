@@ -56,6 +56,17 @@ a2ahub:
   bootstrap:
     agents: ${A2A_HUB_BOOTSTRAP_AGENTS:}
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+      probes:
+        enabled: true
+
 springdoc:
   api-docs:
     enabled: ${A2A_HUB_ENABLE_API_DOCS:true}
