@@ -109,4 +109,26 @@ class AgentHealthPersistenceServiceTest {
         assertThat(savedLog.getErrorMsg().length()).isLessThan(1100);
         assertThat(savedLog.getErrorMsg()).endsWith("... [truncated]");
     }
+
+    @Test
+    @DisplayName("Should DISCARD stale health probe result if agent URL was re-registered/updated in-flight")
+    void shouldDiscardStaleProbeWhenProbedUrlDoesNotMatchAgentUrl() {
+        UUID agentId = UUID.randomUUID();
+        Agent agent = new Agent();
+        agent.setId(agentId);
+        agent.setName("TestAgent");
+        agent.setUrl("https://new-endpoint.agent.io");
+        agent.setStatus("HEALTHY");
+
+        when(agentRepository.findById(agentId)).thenReturn(Optional.of(agent));
+
+        // In-flight probe was sent to the old endpoint, which failed and returned OFFLINE
+        persistenceService.recordProbeResult(agentId, "https://old-endpoint.agent.io", "OFFLINE", 3000, "Connection refused");
+
+        // The stale probe should be discarded: agent status must remain HEALTHY, no save, no event
+        assertThat(agent.getStatus()).isEqualTo("HEALTHY");
+        verify(agentRepository, never()).save(agent);
+        verify(healthCheckRepository, never()).save(any(HealthCheckLog.class));
+        verify(eventPublisher, never()).publishStatusEvent(any());
+    }
 }

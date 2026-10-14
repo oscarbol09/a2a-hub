@@ -145,6 +145,7 @@ public class AgentHealthMonitor {
                     HealthCheckResult result = future.join();
                     persistenceService.recordProbeResult(
                             result.agentId(),
+                            result.probedUrl(),
                             result.status(),
                             result.latencyMs() != null ? result.latencyMs() : 0,
                             result.error()
@@ -166,6 +167,7 @@ public class AgentHealthMonitor {
         HealthCheckResult result = executeProbe(new AgentTarget(agent.getId(), agent.getName(), agent.getUrl()));
         persistenceService.recordProbeResult(
                 agent.getId(),
+                agent.getUrl(),
                 result.status(),
                 result.latencyMs() != null ? result.latencyMs() : 0,
                 result.error()
@@ -186,6 +188,7 @@ public class AgentHealthMonitor {
                     target.name(), target.id(), host);
             return new HealthCheckResult(
                     target.id(),
+                    target.url(),
                     "OFFLINE",
                     null,
                     "Circuit breaker OPEN: agent host " + host + " is repeatedly failing, backing off"
@@ -197,7 +200,7 @@ public class AgentHealthMonitor {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             cb.releasePermission();
-            return new HealthCheckResult(target.id(), "OFFLINE", 0, "Health probe interrupted waiting for permit");
+            return new HealthCheckResult(target.id(), target.url(), "OFFLINE", 0, "Health probe interrupted waiting for permit");
         }
 
         try {
@@ -243,7 +246,7 @@ public class AgentHealthMonitor {
                 cb.onSuccess(duration, TimeUnit.MILLISECONDS);
             }
 
-            return new HealthCheckResult(target.id(), status, latencyMs, errorMessage);
+            return new HealthCheckResult(target.id(), target.url(), status, latencyMs, errorMessage);
         } finally {
             probeSemaphore.release();
         }
@@ -305,16 +308,13 @@ public class AgentHealthMonitor {
 
     public record AgentTarget(UUID id, String name, String url) {}
 
-    public record HealthCheckResult(UUID agentId, String status, Integer latencyMs, String error) {
+    public record HealthCheckResult(UUID agentId, String probedUrl, String status, Integer latencyMs, String error) {
         public HealthCheckResult(UUID agentId, String status, Integer latencyMs, String error) {
-            this.agentId = agentId;
-            this.status = status;
-            this.latencyMs = latencyMs;
-            this.error = error;
+            this(agentId, null, status, latencyMs, error);
         }
 
         public HealthCheckResult(UUID agentId, String status, int latencyMs) {
-            this(agentId, status, latencyMs, null);
+            this(agentId, null, status, latencyMs, null);
         }
     }
 }

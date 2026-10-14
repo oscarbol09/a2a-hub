@@ -46,10 +46,27 @@ public class AgentHealthPersistenceService {
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void recordProbeResult(UUID agentId, String newStatus, int latencyMs, String errorMessage) {
+        recordProbeResult(agentId, null, newStatus, latencyMs, errorMessage);
+    }
+
+    /**
+     * Records a probe result in an isolated transaction with URL invariant fencing.
+     * If the agent was re-registered or mutated in-flight (probedUrl != agent.getUrl()),
+     * the stale probe result is safely discarded to prevent overwriting the new registration.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void recordProbeResult(UUID agentId, String probedUrl, String newStatus, int latencyMs, String errorMessage) {
         try {
             Agent agent = agentRepository.findById(agentId).orElse(null);
             if (agent == null) {
                 log.warn("Agent {} not found during health result recording; skipping", agentId);
+                return;
+            }
+
+            // Fencing: Discard stale probe if agent endpoint was re-registered or updated while probe was in flight
+            if (probedUrl != null && !Objects.equals(agent.getUrl(), probedUrl)) {
+                log.warn("Discarding stale health probe result for agent {} ({}): probed URL [{}] does not match current registered URL [{}]",
+                        agent.getName(), agentId, probedUrl, agent.getUrl());
                 return;
             }
 

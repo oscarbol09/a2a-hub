@@ -103,7 +103,7 @@ class AgentHealthMonitorTest {
 
         assertThat(result.status()).isEqualTo("HEALTHY");
         assertThat(result.error()).isNull();
-        verify(persistenceService).recordProbeResult(eq(agentId), eq("HEALTHY"), anyInt(), isNull());
+        verify(persistenceService).recordProbeResult(eq(agentId), eq("https://translator.agent.io"), eq("HEALTHY"), anyInt(), isNull());
     }
 
     @Test
@@ -125,7 +125,7 @@ class AgentHealthMonitorTest {
 
         assertThat(result.status()).isEqualTo("OFFLINE");
         assertThat(result.error()).contains("Connection refused");
-        verify(persistenceService).recordProbeResult(eq(agentId), eq("OFFLINE"), anyInt(), contains("Connection refused"));
+        verify(persistenceService).recordProbeResult(eq(agentId), eq("https://broken.agent.io"), eq("OFFLINE"), anyInt(), contains("Connection refused"));
     }
 
     @Test
@@ -233,7 +233,7 @@ class AgentHealthMonitorTest {
         verify(probeClient, times(3)).get();
 
         // Verify persistence service recorded all 4 checks, including the fast-fail probe
-        verify(persistenceService, times(4)).recordProbeResult(eq(agentId), eq("OFFLINE"), anyInt(), any());
+        verify(persistenceService, times(4)).recordProbeResult(eq(agentId), eq("https://flaky.agent.io"), eq("OFFLINE"), anyInt(), any());
     }
 
     @Test
