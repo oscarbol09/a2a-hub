@@ -456,4 +456,14 @@ class TaskServiceTest {
         assertThat(result.isAsync()).isTrue();
         verify(requestBodySpec, timeout(2000)).header("Authorization", "Bearer async-bearer-token");
     }
+
+    @Test
+    @DisplayName("Should invoke persistenceService.recoverOrphanedTasks on application ready event")
+    void shouldRecoverOrphanedTasksOnStartup() {
+        when(persistenceService.recoverOrphanedTasks()).thenReturn(3);
+
+        taskService.recoverOrphanedTasksOnStartup();
+
+        verify(persistenceService).recoverOrphanedTasks();
+    }
 }

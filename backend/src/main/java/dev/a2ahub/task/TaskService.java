@@ -9,6 +9,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.core.task.AsyncTaskExecutor;
 import org.springframework.data.domain.PageRequest;
@@ -58,6 +60,17 @@ public class TaskService {
         this.eventPublisher = eventPublisher;
         this.restClient = restClientBuilder.build();
         this.taskExecutor = taskExecutor;
+    }
+
+    /**
+     * Startup recovery: reconciles any tasks left orphaned in SUBMITTED state from prior crashes or restarts.
+     */
+    @EventListener(ApplicationReadyEvent.class)
+    public void recoverOrphanedTasksOnStartup() {
+        int recovered = persistenceService.recoverOrphanedTasks();
+        if (recovered > 0) {
+            log.warn("Application startup recovery: reconciled {} orphaned tasks from SUBMITTED to FAILED state.", recovered);
+        }
     }
 
     /**

@@ -157,4 +157,27 @@ class TaskPersistenceServiceTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("Task not found with ID: " + taskId);
     }
+
+    @Test
+    @DisplayName("Should recover orphaned tasks in SUBMITTED state to FAILED")
+    void shouldRecoverOrphanedTasks() {
+        TaskEntity stuck1 = new TaskEntity();
+        stuck1.setId(UUID.randomUUID());
+        stuck1.setState(TaskState.SUBMITTED);
+
+        TaskEntity stuck2 = new TaskEntity();
+        stuck2.setId(UUID.randomUUID());
+        stuck2.setState(TaskState.SUBMITTED);
+
+        when(taskRepository.findByState(TaskState.SUBMITTED)).thenReturn(java.util.List.of(stuck1, stuck2));
+        when(taskRepository.save(any(TaskEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        int recovered = persistenceService.recoverOrphanedTasks();
+
+        assertThat(recovered).isEqualTo(2);
+        assertThat(stuck1.getState()).isEqualTo(TaskState.FAILED);
+        assertThat(stuck1.getErrorDetail()).contains("Recovered after application restart");
+        assertThat(stuck2.getState()).isEqualTo(TaskState.FAILED);
+        assertThat(stuck2.getErrorDetail()).contains("Recovered after application restart");
+    }
 }

@@ -75,4 +75,22 @@ public class TaskPersistenceService {
                 saved.getUpdatedAt()
         );
     }
+
+    /**
+     * Recovers in-flight tasks left in SUBMITTED state across application restarts.
+     * Marks orphaned tasks as FAILED with descriptive error context.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public int recoverOrphanedTasks() {
+        java.util.List<TaskEntity> stuckTasks = taskRepository.findByState(TaskState.SUBMITTED);
+        int recovered = 0;
+        for (TaskEntity task : stuckTasks) {
+            task.setState(TaskState.FAILED);
+            task.setErrorDetail("Recovered after application restart: task was orphaned in SUBMITTED state when previous node process halted.");
+            task.setUpdatedAt(ZonedDateTime.now());
+            taskRepository.save(task);
+            recovered++;
+        }
+        return recovered;
+    }
 }
