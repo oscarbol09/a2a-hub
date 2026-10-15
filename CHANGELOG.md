@@ -16,12 +16,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.1.0-alpha] - 2026-10-15
+
+### Added
+- **Socket-Level DNS Pinning & TOCTOU Elimination:** Integrated Apache HttpClient 5 with custom `DnsResolver` wired directly to `SsrfValidator`. Pre-connection socket-level IP validation blocks DNS rebinding attacks (CWE-367 / CWE-918) against loopback, private RFC 1918 networks, and cloud metadata.
+- **Calibrated Vector Similarity Metrics:** Replaced hardcoded fallback confidence (`0.90`) in `A2AOrchestrator` with real, mathematically bounded cosine similarity `(1.0 - (embedding <=> cast(:queryVector as vector)))` projected from `AgentRepository`.
+- **Startup Task Reconciliation:** Added automated recovery for tasks stranded in `SUBMITTED` state across server crashes or process restarts, transitioning them to `FAILED` with diagnostic context.
+- **Single-Node Health Probe Guard:** Added atomic reentrancy protection (`AtomicBoolean`) in `AgentHealthMonitor` to prevent overlapping schedule executions.
+- **Gemini Frontier Model Standardization:** Standardized Google Gemini model to `gemini-3.8-flash` across backend, reference agents, and Docker Compose configurations, retiring deprecated 2.0 endpoints.
+
+### Changed
+- Unified project versioning across backend, agents, and frontend to `0.1.0-alpha`.
+- Refactored documentation across `README.md`, `ROADMAP.md`, and `CHANGELOG.md` to align with empirical capabilities and remove speculative marketing terminology.
+
+---
+
 ## [0.1.0] - 2026-10-11
 
 ### Added
-- **RFC 9562 UUIDv7 Primary Keys:** Pure SQL generator `uuid_generate_v7()` using `clock_timestamp()` and `pgcrypto` entropy, guaranteeing monotonic time-ordered clustering and eliminating B-tree fragmentation.
+- **RFC 9562 UUIDv7 Primary Keys:** Pure SQL generator `uuid_generate_v7()` using `clock_timestamp()` and `pgcrypto` entropy for monotonic time-ordered clustering, optimizing B-tree insert locality.
 - **Optimistic Locking Guardrails:** Hibernate `@Version lock_version` on `agents` and `tasks` tables to prevent lost updates under concurrent updates.
-- **SSRF Defense Engine (`SsrfValidator`):** Validates all outbound agent URLs. Resolves hostnames to all associated IP addresses to mitigate DNS rebinding and multi-homing attacks; blocks RFC 1918 private ranges, carrier-grade NAT (`100.64.0.0/10`), loopback, link-local, cloud metadata (`169.254.169.254`), IPv4-mapped IPv6, and IPv6 ULA (`fc00::/7`).
+- **SSRF Defense Engine (`SsrfValidator`):** Validates all outbound agent URLs. Resolves hostnames to all associated IP addresses to mitigate multi-homing attacks; blocks RFC 1918 private ranges, carrier-grade NAT (`100.64.0.0/10`), loopback, link-local, cloud metadata (`169.254.169.254`), IPv4-mapped IPv6, and IPv6 ULA (`fc00::/7`).
 - **Constant-Time API Key Filter (`ApiKeyAuthFilter`):** Implements path canonicalization via Spring MVC utilities and constant-time string comparison (`MessageDigest.isEqual`) to eliminate CWE-208 timing side channels.
 - **Strict HTTP Security Headers:** Configured Content-Security-Policy (segregated for API vs. Swagger UI), `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, HSTS preload (63,072,000s), and Cross-Origin isolation (`COOP`/`CORP: same-origin`).
 - **AES-256-GCM Column Encryption (`AesGcmAttributeConverter`):** Transparent entity attribute converter utilizing 96-bit random IVs and 128-bit authentication tags, preventing raw secret exposure in database backups.

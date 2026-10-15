@@ -189,11 +189,11 @@ Reference Docker configurations in this repository enforce:
 This repository includes two production reference agents demonstrating these standards:
 
 1. **`weather-agent` (`port 8081`)**:
-   - Framework: Spring Boot 3.4.3 + Spring AI 1.0.0-M1.
-   - LLM: `ChatClient` with Google Gemini (`gemini-2.0-flash`).
+   - Framework: Spring Boot 3.4.3 + Spring AI 1.1.0.
+   - LLM: `ChatClient` with Google Gemini (`gemini-3.8-flash`).
    - Features: System prompt domain pinning, XML delimiter isolation, deterministic mock mode fallback when `GEMINI_API_KEY` is unconfigured.
 
 2. **`calculator-agent` (`port 8082`)**:
    - Framework: Spring Boot 3.4.3 + LangChain4j 0.36.2.
-   - LLM: `GoogleAiGeminiChatModel` (`gemini-2.0-flash`).
+   - LLM: `GoogleAiGeminiChatModel` (`gemini-3.8-flash`).
    - Features: Arithmetic and numerical reasoning, input validation (`@Size(max=500)`), non-root container isolation.

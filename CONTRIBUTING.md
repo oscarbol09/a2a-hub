@@ -12,15 +12,19 @@ Guidelines for reporting bugs, submitting features, and opening pull requests.
 3. Ensure local tests pass before opening a Pull Request:
    ```bash
    # Backend
-   cd backend && mvn test
+   cd backend && ./mvnw test
+
+   # Microservice Agents
+   cd weather-agent && ./mvnw test
+   cd calculator-agent && ./mvnw test
 
    # Frontend
-   cd frontend && npm run build
+   cd frontend && npm test && npm run build
    ```
 
 ## Engineering Standards
 
-### Backend (Java 21 · Spring Boot 3.4)
+### Backend (Java 21 · Spring Boot 3.4.3)
 - **Virtual Threads Hygiene:** Do not hold `synchronized` monitors across I/O or network calls. Use `ReentrantLock` when synchronization is mandatory to avoid Loom carrier thread pinning.
 - **Data Access:** Validate entity boundaries; store dynamic A2A spec payloads in PostgreSQL `JSONB` with `@JdbcTypeCode(SqlTypes.JSON)`.
 - **Testing:** Unit tests must use JUnit 5 and AssertJ. Controller tests must use `@WebMvcTest` with MockMvc. Do not commit tautological tests or empty assertion mocks.

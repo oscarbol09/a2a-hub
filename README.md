@@ -5,13 +5,13 @@
 <h1 align="center">A2A-Hub</h1>
 
 <p align="center">
-  <strong>Decentralized Agent Discovery Registry & Orchestration Hub for the Agent2Agent (A2A) Protocol</strong>
+  <strong>Agent Discovery Registry & Orchestration Hub for the Agent2Agent (A2A) Protocol (v0.1.0-alpha)</strong>
 </p>
 
 <p align="center">
   <a href="https://github.com/oscarbol09/a2a-hub/actions/workflows/ci.yml"><img src="https://github.com/oscarbol09/a2a-hub/actions/workflows/ci.yml/badge.svg" alt="CI Pipeline"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License: Apache 2.0"></a>
-  <a href="https://spring.io/projects/spring-boot"><img src="https://img.shields.io/badge/Spring_Boot-3.4-6DB33F.svg" alt="Spring Boot 3.4"></a>
+  <a href="https://spring.io/projects/spring-boot"><img src="https://img.shields.io/badge/Spring_Boot-3.4.3-6DB33F.svg" alt="Spring Boot 3.4.3"></a>
   <a href="https://www.oracle.com/java/technologies/downloads/#java21"><img src="https://img.shields.io/badge/Java-21_LTS-007396.svg" alt="Java 21 LTS"></a>
   <a href="https://vuejs.org/"><img src="https://img.shields.io/badge/Vue-3.5-4FC08D.svg" alt="Vue 3.5"></a>
   <a href="https://github.com/a2aproject/A2A"><img src="https://img.shields.io/badge/Protocol-A2A_v1.0-orange.svg" alt="A2A Protocol v1.0"></a>
@@ -27,7 +27,7 @@ The [Agent2Agent (A2A) Protocol](https://github.com/a2aproject/A2A) standardizes
 2. **Monitor availability and latency** via non-blocking background probes, eliminating health polling overhead from calling agents.
 3. **Execute semantic capability routing** so natural language task requests match the most qualified agent without static rule engines.
 
-This project addresses the operational registry gap discussed in [a2aproject/a2a-java#683](https://github.com/a2aproject/a2a-java/issues/683), delivering an enterprise-hardened hub and monitoring dashboard built on Java 21, Spring Boot 3.4, and PostgreSQL 16.
+This project addresses the operational registry gap discussed in [a2aproject/a2a-java#683](https://github.com/a2aproject/a2a-java/issues/683), delivering an extensible reference hub and monitoring dashboard built on Java 21, Spring Boot 3.4.3, and PostgreSQL 16.
 
 ---
 
@@ -77,16 +77,28 @@ This project addresses the operational registry gap discussed in [a2aproject/a2a
 
 ## Core Engineering Implementations
 
-- **RFC 9562 UUIDv7 Clustered Primary Keys:** Entity IDs are generated via SQL `uuid_generate_v7()` using `clock_timestamp()` and cryptographic entropy. Monotonic time ordering preserves $O(1)$ B-tree insert locality and eliminates random page splits.
+- **RFC 9562 UUIDv7 Clustered Primary Keys:** Entity IDs are generated via SQL `uuid_generate_v7()` using `clock_timestamp()` and cryptographic entropy. Monotonic time ordering preserves sequential B-tree insert locality and reduces random page splits.
 - **Optimistic Concurrency Control:** Hibernate `@Version lock_version` on `agents` and `tasks` protects against race conditions and concurrent overwrite hazards.
-- **SSRF Multi-IP Rebinding Defenses:** `SsrfValidator` resolves all host IPs (`getAllByName`), rejecting loopback, carrier-grade NAT (`100.64.0.0/10`), link-local, RFC 1918 subnets, cloud metadata (`169.254.169.254`), and IPv6 ULA (`fc00::/7`).
+- **Socket-Level SSRF & DNS Pinning Defenses:** `SsrfValidator` and Apache HttpClient 5 integrate at the socket resolution level, validating all resolved IP addresses before connection. Prohibits loopback, carrier-grade NAT (`100.64.0.0/10`), link-local, RFC 1918 subnets, cloud metadata (`169.254.169.254`), and IPv6 ULA (`fc00::/7`), mitigating Time-of-Check to Time-of-Use (TOCTOU) DNS rebinding risks.
 - **Constant-Time Authentication & Path Normalization:** `ApiKeyAuthFilter` uses Spring MVC path canonicalization and constant-time byte comparisons (`MessageDigest.isEqual`) to prevent CWE-208 timing side channels.
-- **Non-Blocking Virtual Thread Health Probing:** Probes execute across Java 21 Virtual Threads without leasing database connections during outbound network I/O. Results are written via dedicated persistence workers in short `<2ms` `@Transactional(REQUIRES_NEW)` scopes.
+- **Non-Blocking Virtual Thread Health Probing:** Probes execute across Java 21 Virtual Threads without leasing database connections during outbound network I/O. Results are written via dedicated persistence workers in short `<2ms` `@Transactional(REQUIRES_NEW)` scopes, guarded against overlapping probe cycles.
+- **Startup Task Recovery:** Reconciles in-flight tasks orphaned in `SUBMITTED` state across server crashes or node restarts, transitioning them safely to `FAILED`.
 - **Chunked FIFO Table Pruning:** Scheduled maintenance purges historical telemetry with non-blocking CTE queries (`WITH doomed AS ... DELETE ... LIMIT 5000`) and 50ms pauses, preventing MVCC table bloat and WAL spikes.
 - **RFC 7240 Asynchronous Task Proxying:** Supports both immediate synchronous execution (`201 Created`) and asynchronous delegation (`202 Accepted` with `Location` header and `Preference-Applied: respond-async`).
 - **Keyset Cursor Pagination:** Queries use composite B-tree indexes `(agent_id, id DESC)` with covering columns to bypass PostgreSQL TOAST table reads entirely during pagination.
-- **AI Triage with Anti-Hallucination Gate:** `A2AOrchestrator` uses LangChain4j and Google Gemini with temperature 0.0, 1000-char input bounding, and XML delimiters (`<candidate_pool>`, `<user_task>`). A post-routing validation gate guarantees that selected agent UUIDs exist in the retrieved pool; if violated or unconfigured, the system falls back to `pgvector` cosine similarity with explicit telemetry codes.
-- **Reference Microservices:** Hardened containerized reference agents (`weather-agent` on Spring AI 1.0, `calculator-agent` on LangChain4j) with domain refusal constraints and automated seed bootstrap discovery (`a2ahub.bootstrap.agents`).
+- **AI Triage with Invariant Validation Gate:** `A2AOrchestrator` uses LangChain4j and Google Gemini (`gemini-3.8-flash`) with temperature 0.0, 1000-char input bounding, and XML delimiters (`<candidate_pool>`, `<user_task>`). A post-routing invariant gate guarantees that selected agent UUIDs exist in the retrieved pool; if violated or unconfigured, the system falls back to `pgvector` cosine similarity with real, mathematically bounded similarity scores.
+- **Reference Microservices:** Containerized reference agents (`weather-agent` on Spring AI 1.1, `calculator-agent` on LangChain4j) with domain refusal constraints and automated seed bootstrap discovery (`a2ahub.bootstrap.agents`).
+
+---
+
+## Current Status & Operational Scope
+
+> [!NOTE]
+> **Status:** Alpha v0.1.0 (Advanced Functional Prototype & Reference Implementation)
+> 
+> - **A2A Protocol Conformance:** Uses native domain mapping conforming to the [A2A Protocol Specification v1.0](AGENTS.md). Direct integration with the official `a2a-java-sdk-client` will be completed once published to Maven Central.
+> - **Deployment Topology:** Currently single-node with in-process Virtual Thread task dispatching. Resilient task recovery is active on node reboot. Distributed coordination (ShedLock, Kafka/durable outbox, multi-tenant RBAC) is planned on the [ROADMAP.md](ROADMAP.md).
+> - **Network Security:** Production deployments must keep `A2AHUB_SECURITY_SSRF_ALLOW_PRIVATE_NETWORKS=false` to enforce socket-level SSRF defenses.
 
 ---
 
