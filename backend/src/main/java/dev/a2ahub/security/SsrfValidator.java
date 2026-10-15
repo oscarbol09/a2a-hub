@@ -55,29 +55,56 @@ public class SsrfValidator {
             throw new IllegalArgumentException("URL must contain a valid host component");
         }
 
+        try {
+            resolveAndValidate(host);
+        } catch (UnknownHostException | SecurityException e) {
+            throw new IllegalArgumentException(e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Resolves all IP addresses for a host and validates that none are in restricted ranges.
+     * Returns the resolved addresses to be used directly by the HTTP client (pinning DNS, zero TOCTOU).
+     *
+     * @param host the hostname or IP literal to resolve and validate
+     * @return array of resolved safe InetAddress instances
+     * @throws UnknownHostException if the host cannot be resolved or resolves to a restricted/forbidden address
+     */
+    public InetAddress[] resolveAndValidate(String host) throws UnknownHostException {
+        if (host == null || host.isBlank()) {
+            throw new UnknownHostException("Host cannot be empty");
+        }
+
+        String cleanHost = host.trim();
+        if (cleanHost.startsWith("[") && cleanHost.endsWith("]")) {
+            cleanHost = cleanHost.substring(1, cleanHost.length() - 1);
+        }
+
         if (securityProperties.getSsrf().isAllowPrivateNetworks()) {
-            log.debug("SSRF protection bypassed (allowPrivateNetworks=true) for host: {}", host);
-            return;
+            log.debug("SSRF protection bypassed (allowPrivateNetworks=true) for host: {}", cleanHost);
+            return InetAddress.getAllByName(cleanHost);
         }
 
-        if (FORBIDDEN_HOSTNAMES.contains(host.toLowerCase())) {
-            throw new IllegalArgumentException("Access to loopback hostname '" + host + "' is forbidden");
+        if (FORBIDDEN_HOSTNAMES.contains(cleanHost.toLowerCase())) {
+            log.warn("Blocked SSRF attempt targeting forbidden hostname: {}", cleanHost);
+            throw new UnknownHostException("Access to loopback hostname '" + cleanHost + "' is forbidden");
         }
 
-        // Resolve all IP addresses for the host to defend against multi-homed / DNS rebinding attacks
         InetAddress[] addresses;
         try {
-            addresses = InetAddress.getAllByName(host);
+            addresses = InetAddress.getAllByName(cleanHost);
         } catch (UnknownHostException e) {
-            throw new IllegalArgumentException("Host could not be resolved: " + host, e);
+            throw new UnknownHostException("Host could not be resolved: " + cleanHost);
         }
 
         for (InetAddress addr : addresses) {
             if (isForbiddenAddress(addr)) {
-                log.warn("Blocked SSRF attempt targeting IP: {} (Host: {})", addr.getHostAddress(), host);
-                throw new IllegalArgumentException("Destination IP address '" + addr.getHostAddress() + "' is in a restricted range");
+                log.warn("Blocked SSRF attempt targeting IP: {} (Host: {})", addr.getHostAddress(), cleanHost);
+                throw new UnknownHostException("Destination IP address '" + addr.getHostAddress() + "' is in a restricted range");
             }
         }
+
+        return addresses;
     }
 
     private boolean isForbiddenAddress(InetAddress addr) {

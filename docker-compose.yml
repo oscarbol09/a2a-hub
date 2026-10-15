@@ -25,7 +25,7 @@ services:
       - "8081:8081"
     environment:
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.0-flash}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.8-flash}
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:8081/.well-known/agent-card.json"]
       interval: 15s
@@ -42,7 +42,7 @@ services:
       - "8082:8082"
     environment:
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.0-flash}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.8-flash}
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:8082/.well-known/agent-card.json"]
       interval: 15s
@@ -62,6 +62,9 @@ services:
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      # SECURITY WARNING: SSRF protection bypass is strictly permitted for local Docker Compose bridge networking.
+      # In any staging, cloud, or production deployment, A2AHUB_SECURITY_SSRF_ALLOW_PRIVATE_NETWORKS MUST be set to "false"
+      # to prevent SSRF and DNS rebinding attacks targeting loopback, RFC 1918 private ranges, and cloud metadata endpoints.
       A2AHUB_SECURITY_SSRF_ALLOW_PRIVATE_NETWORKS: "true"
       A2A_HUB_BOOTSTRAP_AGENTS: "http://weather-agent:8081,http://calculator-agent:8082"
     depends_on:

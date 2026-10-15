@@ -64,4 +64,59 @@ class SsrfValidatorTest {
         assertThatCode(() -> ssrfValidator.validateSafeRemoteUrl("http://127.0.0.1:8080"))
                 .doesNotThrowAnyException();
     }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "127.0.0.1",
+            "localhost",
+            "localhost.localdomain",
+            "169.254.169.254",
+            "10.0.0.5",
+            "192.168.1.1",
+            "172.16.0.1",
+            "0.0.0.0",
+            "::1",
+            "[::1]",
+            "[::ffff:127.0.0.1]",
+            "[fc00::1]"
+    })
+    @DisplayName("resolveAndValidate should throw UnknownHostException for forbidden IPs and loopback hosts")
+    void shouldThrowUnknownHostExceptionForForbiddenHosts(String forbiddenHost) {
+        assertThatThrownBy(() -> ssrfValidator.resolveAndValidate(forbiddenHost))
+                .isInstanceOf(java.net.UnknownHostException.class);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "8.8.8.8",
+            "1.1.1.1"
+    })
+    @DisplayName("resolveAndValidate should resolve allowed public IPs successfully")
+    void shouldResolvePublicIps(String publicIp) throws Exception {
+        java.net.InetAddress[] addresses = ssrfValidator.resolveAndValidate(publicIp);
+
+        org.assertj.core.api.Assertions.assertThat(addresses).isNotEmpty();
+        org.assertj.core.api.Assertions.assertThat(addresses[0].getHostAddress()).isEqualTo(publicIp);
+    }
+
+    @Test
+    @DisplayName("resolveAndValidate should allow private networks when configured")
+    void shouldAllowPrivateNetworksInResolveAndValidateWhenConfigured() throws Exception {
+        securityProperties.getSsrf().setAllowPrivateNetworks(true);
+
+        java.net.InetAddress[] addresses = ssrfValidator.resolveAndValidate("127.0.0.1");
+
+        org.assertj.core.api.Assertions.assertThat(addresses).isNotEmpty();
+        org.assertj.core.api.Assertions.assertThat(addresses[0].getHostAddress()).isEqualTo("127.0.0.1");
+    }
+
+    @Test
+    @DisplayName("resolveAndValidate should reject null or empty host")
+    void shouldRejectEmptyHost() {
+        assertThatThrownBy(() -> ssrfValidator.resolveAndValidate(null))
+                .isInstanceOf(java.net.UnknownHostException.class);
+
+        assertThatThrownBy(() -> ssrfValidator.resolveAndValidate("   "))
+                .isInstanceOf(java.net.UnknownHostException.class);
+    }
 }

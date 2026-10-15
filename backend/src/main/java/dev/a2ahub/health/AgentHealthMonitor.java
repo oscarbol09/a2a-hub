@@ -9,16 +9,16 @@ import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import dev.a2ahub.config.RestClientConfig;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.task.AsyncTaskExecutor;
-import org.springframework.http.client.JdkClientHttpRequestFactory;
+import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 
 import java.net.URI;
-import java.net.http.HttpClient;
 import java.time.Duration;
 import java.time.ZonedDateTime;
 import java.util.List;
@@ -27,6 +27,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Non-transactional Orchestrator for agent health checks.
@@ -52,6 +53,7 @@ public class AgentHealthMonitor {
     private final AsyncTaskExecutor healthProbeTaskExecutor;
     private final Semaphore probeSemaphore;
     private final CircuitBreakerRegistry circuitBreakerRegistry;
+    private final AtomicBoolean isCycleRunning = new AtomicBoolean(false);
 
     @Autowired
     public AgentHealthMonitor(AgentRepository agentRepository,
@@ -82,12 +84,11 @@ public class AgentHealthMonitor {
         this.probeSemaphore = new Semaphore(healthProperties.getMaxConcurrentProbes());
         this.circuitBreakerRegistry = circuitBreakerRegistry;
 
-        HttpClient httpClient = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofMillis(PROBE_TIMEOUT_MS))
-                .followRedirects(HttpClient.Redirect.NEVER)
-                .build();
-        JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(httpClient);
-        requestFactory.setReadTimeout(Duration.ofMillis(PROBE_TIMEOUT_MS));
+        HttpComponentsClientHttpRequestFactory requestFactory = RestClientConfig.createRequestFactory(
+                ssrfValidator,
+                Duration.ofMillis(PROBE_TIMEOUT_MS),
+                Duration.ofMillis(PROBE_TIMEOUT_MS)
+        );
 
         this.probeClient = restClientBuilder
                 .requestFactory(requestFactory)
@@ -111,53 +112,62 @@ public class AgentHealthMonitor {
      */
     @Scheduled(fixedDelayString = "#{@healthProperties.intervalMs}", initialDelay = 10000)
     public void runHealthChecks() {
-        List<AgentTarget> targets = agentRepository.findAll().stream()
-                .map(agent -> new AgentTarget(agent.getId(), agent.getName(), agent.getUrl()))
-                .toList();
-
-        if (targets.isEmpty()) {
+        if (!isCycleRunning.compareAndSet(false, true)) {
+            log.warn("Health probe cycle is already in progress. Skipping duplicate schedule trigger.");
             return;
         }
 
-        log.info("Starting concurrent health probe cycle for {} registered agents", targets.size());
-
-        List<CompletableFuture<HealthCheckResult>> futures = targets.stream()
-                .map(target -> CompletableFuture.supplyAsync(
-                        () -> executeProbe(target),
-                        healthProbeTaskExecutor
-                ))
-                .toList();
-
-        CompletableFuture<Void> allOf = CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
-
         try {
-            allOf.get(CYCLE_HARD_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-        } catch (TimeoutException te) {
-            log.warn("Health probe cycle reached hard timeout ceiling of {}s; collecting partial results", CYCLE_HARD_TIMEOUT_SECONDS);
-        } catch (Exception e) {
-            log.error("Unexpected error during health probe cycle aggregation: {}", e.getMessage(), e);
-        }
+            List<AgentTarget> targets = agentRepository.findAll().stream()
+                    .map(agent -> new AgentTarget(agent.getId(), agent.getName(), agent.getUrl()))
+                    .toList();
 
-        int recorded = 0;
-        for (CompletableFuture<HealthCheckResult> future : futures) {
-            if (future.isDone() && !future.isCompletedExceptionally()) {
-                try {
-                    HealthCheckResult result = future.join();
-                    persistenceService.recordProbeResult(
-                            result.agentId(),
-                            result.probedUrl(),
-                            result.status(),
-                            result.latencyMs() != null ? result.latencyMs() : 0,
-                            result.error()
-                    );
-                    recorded++;
-                } catch (Exception e) {
-                    log.warn("Failed to persist probe result: {}", e.getMessage());
+            if (targets.isEmpty()) {
+                return;
+            }
+
+            log.info("Starting concurrent health probe cycle for {} registered agents", targets.size());
+
+            List<CompletableFuture<HealthCheckResult>> futures = targets.stream()
+                    .map(target -> CompletableFuture.supplyAsync(
+                            () -> executeProbe(target),
+                            healthProbeTaskExecutor
+                    ))
+                    .toList();
+
+            CompletableFuture<Void> allOf = CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
+
+            try {
+                allOf.get(CYCLE_HARD_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            } catch (TimeoutException te) {
+                log.warn("Health probe cycle reached hard timeout ceiling of {}s; collecting partial results", CYCLE_HARD_TIMEOUT_SECONDS);
+            } catch (Exception e) {
+                log.error("Unexpected error during health probe cycle aggregation: {}", e.getMessage(), e);
+            }
+
+            int recorded = 0;
+            for (CompletableFuture<HealthCheckResult> future : futures) {
+                if (future.isDone() && !future.isCompletedExceptionally()) {
+                    try {
+                        HealthCheckResult result = future.join();
+                        persistenceService.recordProbeResult(
+                                result.agentId(),
+                                result.probedUrl(),
+                                result.status(),
+                                result.latencyMs() != null ? result.latencyMs() : 0,
+                                result.error()
+                        );
+                        recorded++;
+                    } catch (Exception e) {
+                        log.warn("Failed to persist probe result: {}", e.getMessage());
+                    }
                 }
             }
-        }
 
-        log.info("Completed health probe cycle. Successfully recorded {}/{} agents", recorded, targets.size());
+            log.info("Completed health probe cycle. Successfully recorded {}/{} agents", recorded, targets.size());
+        } finally {
+            isCycleRunning.set(false);
+        }
     }
 
     /**
