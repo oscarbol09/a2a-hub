@@ -81,15 +81,15 @@ public class A2AOrchestrator {
         }
 
         // Step 2: Semantic Retrieval of Active Candidates
-        List<Agent> candidates = agentDiscoveryService.discoverSemantic(boundedTask, CANDIDATE_LIMIT);
+        List<AgentDiscoveryService.ScoredAgent> candidates = agentDiscoveryService.discoverSemanticWithScores(boundedTask, CANDIDATE_LIMIT);
         if (candidates == null || candidates.isEmpty()) {
             throw new NoActiveAgentsException("No active agents found in the registry capable of servicing the requested task.");
         }
 
         // Map candidate IDs for invariant verification (anti-hallucination)
-        Map<UUID, Agent> candidateMap = candidates.stream()
-                .filter(a -> a.getId() != null)
-                .collect(Collectors.toMap(Agent::getId, Function.identity(), (k1, k2) -> k1));
+        Map<UUID, AgentDiscoveryService.ScoredAgent> candidateMap = candidates.stream()
+                .filter(ca -> ca.agent() != null && ca.agent().getId() != null)
+                .collect(Collectors.toMap(ca -> ca.agent().getId(), Function.identity(), (k1, k2) -> k1));
 
         // Step 3: Check if LLM is available; if not, graceful fallback to Tier 2 (Vector)
         if (chatModel == null) {
@@ -97,9 +97,14 @@ public class A2AOrchestrator {
             return fallbackToTopSemantic(candidates, "GEMINI_API_KEY_UNCONFIGURED");
         }
 
+        List<Agent> candidateAgents = candidates.stream()
+                .map(AgentDiscoveryService.ScoredAgent::agent)
+                .filter(Objects::nonNull)
+                .toList();
+
         // Step 4: Delimiter Escaping & Sanitization (LLM01 Prompt Injection Defense)
         String safeTaskDescription = sanitizeXml(boundedTask);
-        String safeCandidatesXml = buildCandidatesXml(candidates);
+        String safeCandidatesXml = buildCandidatesXml(candidateAgents);
 
         // Step 5: System Message vs User Message Segregation
         SystemMessage systemMessage = SystemMessage.from(
@@ -146,10 +151,10 @@ public class A2AOrchestrator {
 
             // Step 7: Post-Routing Invariant Validation (LLM02 Hallucination Defense)
             if (decision != null && decision.agentId() != null && candidateMap.containsKey(decision.agentId())) {
-                Agent selected = candidateMap.get(decision.agentId());
+                AgentDiscoveryService.ScoredAgent selected = candidateMap.get(decision.agentId());
                 return AiSuggestionDto.fromLlm(
-                        selected.getId(),
-                        selected.getName(),
+                        selected.agent().getId(),
+                        selected.agent().getName(),
                         decision.reasoning() != null && !decision.reasoning().isBlank() 
                                 ? decision.reasoning() 
                                 : "Selected via AI triage."
@@ -166,12 +171,21 @@ public class A2AOrchestrator {
         }
     }
 
-    private AiSuggestionDto fallbackToTopSemantic(List<Agent> candidates, String reason) {
-        Agent topAgent = candidates.get(0);
+    private AiSuggestionDto fallbackToTopSemantic(List<AgentDiscoveryService.ScoredAgent> candidates, String reason) {
+        AgentDiscoveryService.ScoredAgent top = candidates.get(0);
+        Agent topAgent = top.agent();
+        double score = top.similarityScore();
+
+        if (score <= 0.0) {
+            String fallbackReasoning = String.format(Locale.ROOT,
+                    "Selected via lexical search fallback (confidence: 0.00) due to unindexed vector embeddings [%s].", reason);
+            return new AiSuggestionDto(topAgent.getId(), topAgent.getName(), fallbackReasoning, "VECTOR_FALLBACK", true, 0.0, reason);
+        }
+
         return AiSuggestionDto.fromVectorFallback(
                 topAgent.getId(),
                 topAgent.getName(),
-                0.90,
+                score,
                 reason
         );
     }

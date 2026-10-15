@@ -10,6 +10,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 @Transactional(readOnly = true)
@@ -57,30 +59,59 @@ public class AgentDiscoveryService {
     }
 
     /**
-     * Executes semantic vector search using pgvector cosine distance.
+     * Executes semantic vector search using pgvector cosine distance, returning agents paired with their similarity score.
      */
-    public List<Agent> discoverSemantic(String query, int limit) {
+    public List<ScoredAgent> discoverSemanticWithScores(String query, int limit) {
         if (query == null || query.isBlank()) {
-            return discover(null, null, null, null, 0, limit);
+            return discover(null, null, null, null, 0, limit).stream()
+                    .map(a -> new ScoredAgent(a, 0.0))
+                    .toList();
         }
 
         int safeLimit = Math.min(Math.max(1, limit), 50);
         String queryVector = embeddingService.generateEmbedding(query);
 
         if (queryVector == null) {
-            return discover(null, null, null, query, 0, safeLimit);
+            return discover(null, null, null, query, 0, safeLimit).stream()
+                    .map(a -> new ScoredAgent(a, 0.0))
+                    .toList();
         }
 
         try {
-            List<Agent> results = agentRepository.searchBySemanticEmbedding(queryVector, safeLimit);
-            if (!results.isEmpty()) {
-                return results;
+            List<AgentRepository.AgentWithScore> scoredResults = agentRepository.searchBySemanticEmbeddingWithScore(queryVector, safeLimit);
+            if (scoredResults != null && !scoredResults.isEmpty()) {
+                List<UUID> ids = scoredResults.stream().map(AgentRepository.AgentWithScore::getId).toList();
+                Map<UUID, Agent> agentMap = agentRepository.findAllById(ids).stream()
+                        .collect(Collectors.toMap(Agent::getId, Function.identity()));
+                List<ScoredAgent> results = new ArrayList<>();
+                for (AgentRepository.AgentWithScore s : scoredResults) {
+                    Agent agent = agentMap.get(s.getId());
+                    if (agent != null) {
+                        double rawScore = s.getSimilarityScore() != null ? s.getSimilarityScore() : 0.0;
+                        double calibratedScore = Math.max(0.0, Math.min(1.0, rawScore));
+                        results.add(new ScoredAgent(agent, calibratedScore));
+                    }
+                }
+                if (!results.isEmpty()) {
+                    return results;
+                }
             }
         } catch (Exception e) {
             log.warn("pgvector search failed or no embeddings found: {}. Falling back to text search.", e.getMessage());
         }
 
-        return discover(null, null, null, query, 0, safeLimit);
+        return discover(null, null, null, query, 0, safeLimit).stream()
+                .map(a -> new ScoredAgent(a, 0.0))
+                .toList();
+    }
+
+    /**
+     * Executes semantic vector search using pgvector cosine distance.
+     */
+    public List<Agent> discoverSemantic(String query, int limit) {
+        return discoverSemanticWithScores(query, limit).stream()
+                .map(ScoredAgent::agent)
+                .toList();
     }
 
     /**
@@ -131,6 +162,7 @@ public class AgentDiscoveryService {
 
     public record SkillSummary(String skillId, String name, String description, List<String> tags, long agentCount, List<UUID> agentIds) {}
     public record TagSummary(String tag, long count) {}
+    public record ScoredAgent(Agent agent, double similarityScore) {}
 
     private static class SkillSummaryBuilder {
         private final String skillId;

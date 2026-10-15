@@ -32,7 +32,7 @@ public class AiSuggestionDto {
     }
 
     public static AiSuggestionDto fromVectorFallback(UUID agentId, String agentName, double confidenceScore, String fallbackReason) {
-        String reasoning = String.format("Selected via semantic vector similarity (confidence: %.2f) due to AI gateway fallback.", confidenceScore);
+        String reasoning = String.format(java.util.Locale.ROOT, "Selected via semantic vector similarity (confidence: %.2f) due to AI gateway fallback.", confidenceScore);
         return new AiSuggestionDto(agentId, agentName, reasoning, "VECTOR_FALLBACK", true, confidenceScore, fallbackReason);
     }
 

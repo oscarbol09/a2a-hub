@@ -107,12 +107,53 @@ class AgentDiscoveryServiceTest {
         String mockVector = "[0.1,0.2,0.3]";
 
         when(embeddingService.generateEmbedding(query)).thenReturn(mockVector);
-        when(agentRepository.searchBySemanticEmbedding(mockVector, 10)).thenReturn(List.of(weatherAgent));
+        when(agentRepository.searchBySemanticEmbeddingWithScore(mockVector, 10))
+                .thenReturn(List.of(new AgentRepository.AgentWithScoreDto(weatherAgent.getId(), 0.88)));
+        when(agentRepository.findAllById(List.of(weatherAgent.getId()))).thenReturn(List.of(weatherAgent));
 
         List<Agent> results = discoveryService.discoverSemantic(query, 10);
 
         assertThat(results).hasSize(1);
         assertThat(results.getFirst().getName()).isEqualTo("WeatherAgent");
+    }
+
+    @Test
+    @DisplayName("Should return calibrated cosine similarity scores paired with agents")
+    void shouldPerformSemanticSearchWithCalibratedScores() {
+        String query = "meteorological forecast";
+        String mockVector = "[0.1,0.2,0.3]";
+
+        when(embeddingService.generateEmbedding(query)).thenReturn(mockVector);
+        when(agentRepository.searchBySemanticEmbeddingWithScore(mockVector, 10))
+                .thenReturn(List.of(
+                        new AgentRepository.AgentWithScoreDto(weatherAgent.getId(), 0.89),
+                        new AgentRepository.AgentWithScoreDto(calculatorAgent.getId(), 0.42)
+                ));
+        when(agentRepository.findAllById(List.of(weatherAgent.getId(), calculatorAgent.getId())))
+                .thenReturn(List.of(calculatorAgent, weatherAgent));
+
+        List<AgentDiscoveryService.ScoredAgent> results = discoveryService.discoverSemanticWithScores(query, 10);
+
+        assertThat(results).hasSize(2);
+        assertThat(results.get(0).agent().getName()).isEqualTo("WeatherAgent");
+        assertThat(results.get(0).similarityScore()).isEqualTo(0.89);
+        assertThat(results.get(1).agent().getName()).isEqualTo("MathAgent");
+        assertThat(results.get(1).similarityScore()).isEqualTo(0.42);
+    }
+
+    @Test
+    @DisplayName("Should fallback to 0.0 similarity score when embedding generation fails")
+    void shouldFallbackToZeroScoreWhenEmbeddingFails() {
+        String query = "some fallback query";
+        when(embeddingService.generateEmbedding(query)).thenReturn(null);
+        when(agentRepository.searchIndexedAgents(eq(null), eq(null), eq(null), eq("some fallback query"), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(weatherAgent)));
+
+        List<AgentDiscoveryService.ScoredAgent> results = discoveryService.discoverSemanticWithScores(query, 10);
+
+        assertThat(results).hasSize(1);
+        assertThat(results.getFirst().agent().getName()).isEqualTo("WeatherAgent");
+        assertThat(results.getFirst().similarityScore()).isEqualTo(0.0);
     }
 
     @Test

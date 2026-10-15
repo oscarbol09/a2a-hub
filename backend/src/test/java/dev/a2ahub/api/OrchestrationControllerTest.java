@@ -58,6 +58,29 @@ class OrchestrationControllerTest {
     }
 
     @Test
+    @DisplayName("POST /api/v1/orchestration/suggest - Should return 200 OK with calibrated vector fallback score")
+    void shouldReturnVectorFallbackWithCalibratedScore() throws Exception {
+        UUID agentId = UUID.randomUUID();
+        AiSuggestionDto expectedDto = AiSuggestionDto.fromVectorFallback(agentId, "WeatherAgent", 0.86, "GEMINI_API_KEY_UNCONFIGURED");
+
+        when(orchestrator.suggestAgent("Check atmospheric pressure"))
+                .thenReturn(expectedDto);
+
+        AiSuggestionRequest request = new AiSuggestionRequest("Check atmospheric pressure");
+
+        mockMvc.perform(post("/api/v1/orchestration/suggest")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.agentId").value(agentId.toString()))
+                .andExpect(jsonPath("$.agentName").value("WeatherAgent"))
+                .andExpect(jsonPath("$.source").value("VECTOR_FALLBACK"))
+                .andExpect(jsonPath("$.fallback").value(true))
+                .andExpect(jsonPath("$.confidenceScore").value(0.86))
+                .andExpect(jsonPath("$.fallbackReason").value("GEMINI_API_KEY_UNCONFIGURED"));
+    }
+
+    @Test
     @DisplayName("POST /api/v1/orchestration/suggest - Should return 400 Bad Request with ProblemDetail when input is blank")
     void shouldReturnBadRequestWhenInputIsBlank() throws Exception {
         AiSuggestionRequest request = new AiSuggestionRequest("   ");
