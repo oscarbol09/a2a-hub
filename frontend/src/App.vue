@@ -18,7 +18,7 @@ const route = useRoute();
               <span class="font-bold text-xl tracking-tight text-gray-900">A2A Hub</span>
             </router-link>
             <span class="hidden sm:inline-block text-xs font-mono bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-200">
-              v0.2 Discovery
+              v0.1.0-alpha
             </span>
           </div>
           <div class="flex items-center space-x-1 sm:space-x-3">

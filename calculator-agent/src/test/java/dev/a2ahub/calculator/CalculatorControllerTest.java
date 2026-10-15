@@ -29,7 +29,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WebMvcTest(CalculatorController.class)
 @TestPropertySource(properties = {
         "gemini.api-key=test-api-key",
-        "gemini.model=gemini-2.0-flash"
+        "gemini.model=gemini-3.8-flash"
 })
 class CalculatorControllerTest {
 
@@ -163,7 +163,7 @@ class CalculatorControllerTest {
     @Test
     @DisplayName("CalculatorController initializes in mock mode when apiKey is mock-dev-key or blank")
     void mockMode_activationAndExecution() {
-        CalculatorController mockController = new CalculatorController("mock-dev-key", "gemini-2.0-flash");
+        CalculatorController mockController = new CalculatorController("mock-dev-key", "gemini-3.8-flash");
         assertTrue(mockController.isMockMode());
 
         TaskRequest request = new TaskRequest("10 + 20", "ctx-mock-test");

@@ -42,7 +42,7 @@ public class CalculatorController {
     @Autowired
     public CalculatorController(
             @Value("${gemini.api-key:}") String apiKey,
-            @Value("${gemini.model:gemini-2.0-flash}") String modelName,
+            @Value("${gemini.model:gemini-3.8-flash}") String modelName,
             @Autowired(required = false) GoogleAiGeminiChatModel chatModel) {
         if (chatModel != null) {
             this.chatModel = chatModel;

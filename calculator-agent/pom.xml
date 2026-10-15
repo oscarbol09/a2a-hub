@@ -11,7 +11,7 @@
     </parent>
     <groupId>dev.a2ahub</groupId>
     <artifactId>calculator-agent</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
+    <version>0.1.0-alpha</version>
     <name>calculator-agent</name>
     <description>Calculator Agent</description>
     <properties>

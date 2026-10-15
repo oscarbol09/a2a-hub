@@ -10,7 +10,7 @@
     </parent>
     <groupId>dev.a2ahub</groupId>
     <artifactId>weather-agent</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
+    <version>0.1.0-alpha</version>
     <name>weather-agent</name>
     <description>Weather forecasting AI agent</description>
     <properties>
