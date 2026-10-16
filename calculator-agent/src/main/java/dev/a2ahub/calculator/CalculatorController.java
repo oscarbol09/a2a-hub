@@ -18,6 +18,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 
+import jakarta.annotation.PostConstruct;
+import org.springframework.core.env.Environment;
+
 import java.util.List;
 import java.util.Map;
 
@@ -38,12 +41,17 @@ public class CalculatorController {
 
     private GoogleAiGeminiChatModel chatModel;
     private boolean mockMode;
+    private final Environment env;
+    private final String apiKey;
 
     @Autowired
     public CalculatorController(
             @Value("${gemini.api-key:}") String apiKey,
             @Value("${gemini.model:gemini-3.8-flash}") String modelName,
-            @Autowired(required = false) GoogleAiGeminiChatModel chatModel) {
+            @Autowired(required = false) GoogleAiGeminiChatModel chatModel,
+            @Autowired(required = false) Environment env) {
+        this.apiKey = apiKey;
+        this.env = env;
         if (chatModel != null) {
             this.chatModel = chatModel;
             this.mockMode = false;
@@ -60,7 +68,23 @@ public class CalculatorController {
     }
 
     public CalculatorController(String apiKey, String modelName) {
-        this(apiKey, modelName, null);
+        this(apiKey, modelName, null, null);
+    }
+
+    public CalculatorController(String apiKey, String modelName, GoogleAiGeminiChatModel chatModel) {
+        this(apiKey, modelName, chatModel, null);
+    }
+
+    @PostConstruct
+    public void validateConfiguration() {
+        if (env != null && (env.matchesProfiles("prod") || env.matchesProfiles("production"))) {
+            if (apiKey == null || apiKey.isBlank() || apiKey.equalsIgnoreCase("mock-dev-key")) {
+                throw new IllegalStateException("GEMINI_API_KEY must be configured in production profile. Mock mode is prohibited in production.");
+            }
+        }
+        if (mockMode) {
+            log.warn("CalculatorAgent is running in MOCK MODE because GEMINI_API_KEY is not configured or set to mock-dev-key.");
+        }
     }
 
     public void setChatModel(GoogleAiGeminiChatModel chatModel) {

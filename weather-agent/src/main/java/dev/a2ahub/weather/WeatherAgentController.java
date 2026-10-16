@@ -13,6 +13,10 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 
+import jakarta.annotation.PostConstruct;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.env.Environment;
+
 import java.util.List;
 import java.util.Map;
 
@@ -40,12 +44,36 @@ public class WeatherAgentController {
 
     private final ChatClient chatClient;
     private final boolean mockMode;
+    private final Environment env;
+    private final String apiKey;
+
+    @Autowired
+    public WeatherAgentController(
+            ChatClient.Builder chatClientBuilder,
+            @Value("${spring.ai.google.genai.api-key:mock-dev-key}") String apiKey,
+            @Autowired(required = false) Environment env) {
+        this.chatClient = chatClientBuilder.defaultSystem(SYSTEM_PROMPT).build();
+        this.apiKey = apiKey;
+        this.env = env;
+        this.mockMode = apiKey == null || apiKey.isBlank() || apiKey.equalsIgnoreCase("mock-dev-key");
+    }
 
     public WeatherAgentController(
             ChatClient.Builder chatClientBuilder,
-            @Value("${spring.ai.google.genai.api-key:mock-dev-key}") String apiKey) {
-        this.chatClient = chatClientBuilder.defaultSystem(SYSTEM_PROMPT).build();
-        this.mockMode = apiKey == null || apiKey.isBlank() || apiKey.equalsIgnoreCase("mock-dev-key");
+            String apiKey) {
+        this(chatClientBuilder, apiKey, null);
+    }
+
+    @PostConstruct
+    public void validateConfiguration() {
+        if (env != null && (env.matchesProfiles("prod") || env.matchesProfiles("production"))) {
+            if (apiKey == null || apiKey.isBlank() || apiKey.equalsIgnoreCase("mock-dev-key")) {
+                throw new IllegalStateException("GEMINI_API_KEY must be configured in production profile. Mock mode is prohibited in production.");
+            }
+        }
+        if (mockMode) {
+            log.warn("WeatherAgent is running in MOCK MODE because GEMINI_API_KEY is not configured or set to mock-dev-key.");
+        }
     }
 
     @GetMapping("/.well-known/agent-card.json")

@@ -163,7 +163,10 @@ class CalculatorControllerTest {
     @Test
     @DisplayName("CalculatorController initializes in mock mode when apiKey is mock-dev-key or blank")
     void mockMode_activationAndExecution() {
-        CalculatorController mockController = new CalculatorController("mock-dev-key", "gemini-3.8-flash");
+        org.springframework.mock.env.MockEnvironment testEnv = new org.springframework.mock.env.MockEnvironment();
+        testEnv.setActiveProfiles("test");
+        CalculatorController mockController = new CalculatorController("mock-dev-key", "gemini-3.8-flash", null, testEnv);
+        mockController.validateConfiguration();
         assertTrue(mockController.isMockMode());
 
         TaskRequest request = new TaskRequest("10 + 20", "ctx-mock-test");
@@ -172,5 +175,33 @@ class CalculatorControllerTest {
         assertEquals("ok", response.status());
         assertEquals("[MOCK MODE] Simulated calculation for: 10 + 20 = 42", response.result());
         assertEquals("ctx-mock-test", response.contextId());
+    }
+
+    @Test
+    @DisplayName("CalculatorController throws IllegalStateException in prod profile when apiKey is mock-dev-key")
+    void prodProfile_withMockKey_throwsIllegalStateException() {
+        org.springframework.mock.env.MockEnvironment prodEnv = new org.springframework.mock.env.MockEnvironment();
+        prodEnv.setActiveProfiles("prod");
+        CalculatorController controller = new CalculatorController("mock-dev-key", "gemini-3.8-flash", null, prodEnv);
+
+        IllegalStateException ex = org.junit.jupiter.api.Assertions.assertThrows(
+                IllegalStateException.class,
+                controller::validateConfiguration
+        );
+        assertEquals("GEMINI_API_KEY must be configured in production profile. Mock mode is prohibited in production.", ex.getMessage());
+    }
+
+    @Test
+    @DisplayName("CalculatorController throws IllegalStateException in production profile when apiKey is blank or null")
+    void productionProfile_withBlankKey_throwsIllegalStateException() {
+        org.springframework.mock.env.MockEnvironment prodEnv = new org.springframework.mock.env.MockEnvironment();
+        prodEnv.setActiveProfiles("production");
+        CalculatorController controller = new CalculatorController("   ", "gemini-3.8-flash", null, prodEnv);
+
+        IllegalStateException ex = org.junit.jupiter.api.Assertions.assertThrows(
+                IllegalStateException.class,
+                controller::validateConfiguration
+        );
+        assertEquals("GEMINI_API_KEY must be configured in production profile. Mock mode is prohibited in production.", ex.getMessage());
     }
 }

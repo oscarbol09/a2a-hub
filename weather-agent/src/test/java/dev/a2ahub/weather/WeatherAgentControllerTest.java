@@ -115,4 +115,55 @@ class WeatherAgentControllerTest {
                 .andExpect(jsonPath("$.code").value(400))
                 .andExpect(jsonPath("$.message", containsString("query must not exceed 500 characters")));
     }
+
+    @Test
+    @DisplayName("e) Mock mode in test/dev profile activates safely without throwing")
+    void testMockModeInDevOrTest() {
+        org.springframework.mock.env.MockEnvironment testEnv = new org.springframework.mock.env.MockEnvironment();
+        testEnv.setActiveProfiles("test");
+        WeatherAgentController controller = new WeatherAgentController(chatClientBuilder, "mock-dev-key", testEnv);
+        controller.validateConfiguration();
+
+        dev.a2ahub.weather.dto.TaskResponse response = controller.handleTask(
+                new dev.a2ahub.weather.dto.TaskRequest("What is the weather in Berlin?", "ctx-mock"),
+                null
+        );
+        org.junit.jupiter.api.Assertions.assertEquals("ok", response.status());
+        org.junit.jupiter.api.Assertions.assertTrue(response.result().contains("[MOCK MODE]"));
+        org.junit.jupiter.api.Assertions.assertEquals("ctx-mock", response.contextId());
+    }
+
+    @Test
+    @DisplayName("f) Fail-fast in prod profile when API key is mock-dev-key")
+    void testProdProfileFailsFastWithMockKey() {
+        org.springframework.mock.env.MockEnvironment prodEnv = new org.springframework.mock.env.MockEnvironment();
+        prodEnv.setActiveProfiles("prod");
+        WeatherAgentController controller = new WeatherAgentController(chatClientBuilder, "mock-dev-key", prodEnv);
+
+        IllegalStateException ex = org.junit.jupiter.api.Assertions.assertThrows(
+                IllegalStateException.class,
+                controller::validateConfiguration
+        );
+        org.junit.jupiter.api.Assertions.assertEquals(
+                "GEMINI_API_KEY must be configured in production profile. Mock mode is prohibited in production.",
+                ex.getMessage()
+        );
+    }
+
+    @Test
+    @DisplayName("g) Fail-fast in production profile when API key is blank or null")
+    void testProductionProfileFailsFastWithBlankKey() {
+        org.springframework.mock.env.MockEnvironment prodEnv = new org.springframework.mock.env.MockEnvironment();
+        prodEnv.setActiveProfiles("production");
+        WeatherAgentController controller = new WeatherAgentController(chatClientBuilder, "   ", prodEnv);
+
+        IllegalStateException ex = org.junit.jupiter.api.Assertions.assertThrows(
+                IllegalStateException.class,
+                controller::validateConfiguration
+        );
+        org.junit.jupiter.api.Assertions.assertEquals(
+                "GEMINI_API_KEY must be configured in production profile. Mock mode is prohibited in production.",
+                ex.getMessage()
+        );
+    }
 }
