@@ -436,4 +436,61 @@ describe('WebSocketService', () => {
       expect(typeof wsService.onConnectionChange).toBe('function');
     });
   });
+
+  describe('STOMP CONNECT Authentication Headers (F5)', () => {
+    const originalEnvKey = import.meta.env.VITE_API_KEY;
+
+    beforeEach(() => {
+      localStorage.clear();
+      delete (import.meta.env as any).VITE_API_KEY;
+    });
+
+    afterEach(() => {
+      localStorage.clear();
+      if (originalEnvKey !== undefined) {
+        import.meta.env.VITE_API_KEY = originalEnvKey;
+      } else {
+        delete (import.meta.env as any).VITE_API_KEY;
+      }
+    });
+
+    it('injects X-API-Key into connectHeaders when present in localStorage', () => {
+      localStorage.setItem('a2a_api_key', 'ws-secret-local-key');
+      service.connect();
+
+      expect(capturedClientOptions).not.toBeNull();
+      expect(capturedClientOptions.connectHeaders).toEqual({
+        'X-API-Key': 'ws-secret-local-key',
+      });
+    });
+
+    it('injects X-API-Key into connectHeaders when present in VITE_API_KEY', () => {
+      (import.meta.env as any).VITE_API_KEY = 'ws-secret-env-key';
+      service.connect();
+
+      expect(capturedClientOptions).not.toBeNull();
+      expect(capturedClientOptions.connectHeaders).toEqual({
+        'X-API-Key': 'ws-secret-env-key',
+      });
+    });
+
+    it('prioritizes localStorage over VITE_API_KEY for connectHeaders', () => {
+      (import.meta.env as any).VITE_API_KEY = 'ws-secret-env-key';
+      localStorage.setItem('a2a_api_key', 'ws-override-key');
+      service.connect();
+
+      expect(capturedClientOptions).not.toBeNull();
+      expect(capturedClientOptions.connectHeaders).toEqual({
+        'X-API-Key': 'ws-override-key',
+      });
+    });
+
+    it('leaves connectHeaders empty when no apiKey is configured', () => {
+      service.connect();
+
+      expect(capturedClientOptions).not.toBeNull();
+      expect(capturedClientOptions.connectHeaders).toEqual({});
+    });
+  });
 });
+

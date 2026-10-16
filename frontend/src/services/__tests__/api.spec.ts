@@ -5,6 +5,8 @@ import {
   api,
   discoveryApi,
   healthApi,
+  setApiKey,
+  getApiKey,
   type Agent,
   type SkillSummary,
   type TagSummary,
@@ -257,4 +259,91 @@ describe('API Network Contracts with MSW', () => {
       expect(response.data.averageLatencyMs).toBe(38.4);
     });
   });
+
+  describe('API Key Authentication Interceptor & Helpers', () => {
+    const originalEnv = import.meta.env.VITE_API_KEY;
+
+    afterEach(() => {
+      localStorage.clear();
+      if (originalEnv !== undefined) {
+        import.meta.env.VITE_API_KEY = originalEnv;
+      } else {
+        delete (import.meta.env as any).VITE_API_KEY;
+      }
+    });
+
+    it('setApiKey saves key to localStorage and getApiKey retrieves it', () => {
+      expect(getApiKey()).toBeNull();
+      setApiKey('test-key-123');
+      expect(localStorage.getItem('a2a_api_key')).toBe('test-key-123');
+      expect(getApiKey()).toBe('test-key-123');
+    });
+
+    it('setApiKey(null) removes key from localStorage', () => {
+      setApiKey('test-key-123');
+      expect(getApiKey()).toBe('test-key-123');
+      setApiKey(null);
+      expect(localStorage.getItem('a2a_api_key')).toBeNull();
+      expect(getApiKey()).toBeNull();
+    });
+
+    it('getApiKey falls back to VITE_API_KEY when localStorage is not set', () => {
+      (import.meta.env as any).VITE_API_KEY = 'env-api-key-999';
+      expect(localStorage.getItem('a2a_api_key')).toBeNull();
+      expect(getApiKey()).toBe('env-api-key-999');
+    });
+
+    it('getApiKey prioritizes localStorage over VITE_API_KEY', () => {
+      (import.meta.env as any).VITE_API_KEY = 'env-api-key-999';
+      setApiKey('local-override-key');
+      expect(getApiKey()).toBe('local-override-key');
+    });
+
+    it('injects X-API-Key request header when key is in localStorage', async () => {
+      setApiKey('secret-token-storage');
+      let capturedHeader: string | null = null;
+      server.use(
+        http.get(`${baseURL}/auth-inspect`, ({ request }) => {
+          capturedHeader = request.headers.get('X-API-Key');
+          return HttpResponse.json({ status: 'ok' });
+        })
+      );
+
+      const res = await api.get('/auth-inspect');
+      expect(res.status).toBe(200);
+      expect(capturedHeader).toBe('secret-token-storage');
+    });
+
+    it('injects X-API-Key request header when key is in VITE_API_KEY and localStorage is empty', async () => {
+      (import.meta.env as any).VITE_API_KEY = 'secret-env-key';
+      let capturedHeader: string | null = null;
+      server.use(
+        http.get(`${baseURL}/auth-inspect-env`, ({ request }) => {
+          capturedHeader = request.headers.get('X-API-Key');
+          return HttpResponse.json({ status: 'ok' });
+        })
+      );
+
+      const res = await api.get('/auth-inspect-env');
+      expect(res.status).toBe(200);
+      expect(capturedHeader).toBe('secret-env-key');
+    });
+
+    it('does not inject X-API-Key header when neither localStorage nor VITE_API_KEY is present', async () => {
+      delete (import.meta.env as any).VITE_API_KEY;
+      localStorage.clear();
+      let capturedHeader: string | null = 'not-checked';
+      server.use(
+        http.get(`${baseURL}/auth-inspect-none`, ({ request }) => {
+          capturedHeader = request.headers.get('X-API-Key');
+          return HttpResponse.json({ status: 'ok' });
+        })
+      );
+
+      const res = await api.get('/auth-inspect-none');
+      expect(res.status).toBe(200);
+      expect(capturedHeader).toBeNull();
+    });
+  });
 });
+

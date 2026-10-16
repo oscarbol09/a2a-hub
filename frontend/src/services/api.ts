@@ -7,6 +7,29 @@ export const api = axios.create({
   }
 });
 
+api.interceptors.request.use((config) => {
+  const apiKey = typeof window !== 'undefined' ? localStorage.getItem('a2a_api_key') : null;
+  const keyToUse = apiKey || (import.meta.env ? import.meta.env.VITE_API_KEY : undefined);
+  if (keyToUse) {
+    config.headers['X-API-Key'] = keyToUse;
+  }
+  return config;
+});
+
+export const setApiKey = (key: string | null): void => {
+  if (typeof window === 'undefined') return;
+  if (key) {
+    localStorage.setItem('a2a_api_key', key);
+  } else {
+    localStorage.removeItem('a2a_api_key');
+  }
+};
+
+export const getApiKey = (): string | null => {
+  const apiKey = typeof window !== 'undefined' ? localStorage.getItem('a2a_api_key') : null;
+  return apiKey || (import.meta.env ? import.meta.env.VITE_API_KEY : null) || null;
+};
+
 export interface AgentSkill {
   id: string;
   name: string;

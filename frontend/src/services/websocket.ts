@@ -25,9 +25,12 @@ export class WebSocketService {
     }
 
     const targetUrl = this.resolveBrokerUrl(brokerUrl);
+    const apiKey = (typeof window !== 'undefined' ? localStorage.getItem('a2a_api_key') : null) ||
+      (import.meta.env ? import.meta.env.VITE_API_KEY : undefined);
 
     this.client = new Client({
       brokerURL: targetUrl,
+      connectHeaders: apiKey ? { 'X-API-Key': apiKey } : {},
       reconnectDelay: 5000,
       heartbeatIncoming: 10000,
       heartbeatOutgoing: 10000,
