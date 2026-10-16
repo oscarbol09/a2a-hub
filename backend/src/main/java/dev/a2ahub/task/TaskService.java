@@ -24,6 +24,7 @@ import org.springframework.web.client.RestClientResponseException;
 
 import java.net.URI;
 import java.time.ZonedDateTime;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -150,6 +151,11 @@ public class TaskService {
         Map<String, Object> responseBody = null;
         String errorMessage = null;
 
+        Map<String, Object> outgoingPayload = payload != null ? new HashMap<>(payload) : new HashMap<>();
+        if (contextId != null && !outgoingPayload.containsKey("contextId")) {
+            outgoingPayload.put("contextId", contextId);
+        }
+
         try {
             RestClient.RequestBodySpec requestSpec = restClient.post()
                     .uri(URI.create(endpoint))
@@ -169,13 +175,20 @@ public class TaskService {
             }
 
             responseBody = requestSpec
-                    .body(payload)
+                    .body(outgoingPayload)
                     .retrieve()
                     .body(new ParameterizedTypeReference<Map<String, Object>>() {});
 
-            finalState = TaskState.COMPLETED;
-            if (responseBody == null) {
-                responseBody = Map.of("status", "ok");
+            if (responseBody != null && "error".equalsIgnoreCase(String.valueOf(responseBody.get("status")))) {
+                finalState = TaskState.FAILED;
+                errorMessage = responseBody.get("result") != null
+                        ? String.valueOf(responseBody.get("result"))
+                        : String.valueOf(responseBody.getOrDefault("error", "Downstream agent returned status: error"));
+            } else {
+                finalState = TaskState.COMPLETED;
+                if (responseBody == null) {
+                    responseBody = Map.of("status", "ok");
+                }
             }
         } catch (ResourceAccessException e) {
             log.warn("Downstream agent {} connection/read timeout for task {}: {}", agentName, taskId, e.getMessage());

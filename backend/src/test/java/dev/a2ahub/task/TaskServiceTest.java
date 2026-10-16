@@ -9,6 +9,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.core.ParameterizedTypeReference;
@@ -465,5 +466,192 @@ class TaskServiceTest {
         taskService.recoverOrphanedTasksOnStartup();
 
         verify(persistenceService).recoverOrphanedTasks();
+    }
+
+    @Test
+    @DisplayName("F1: Should mark task as FAILED when downstream agent returns status 'error' in response body")
+    @SuppressWarnings("unchecked")
+    void shouldMarkTaskFailedWhenDownstreamReturnsStatusError() {
+        UUID agentId = UUID.randomUUID();
+        Agent agent = new Agent();
+        agent.setId(agentId);
+        agent.setName("WeatherAgent");
+        agent.setUrl("https://weather.agent.io");
+        agent.setStatus("HEALTHY");
+
+        when(agentRepository.findById(agentId)).thenReturn(Optional.of(agent));
+
+        UUID initialTaskId = UUID.randomUUID();
+        TaskService.TaskDto initialDto = new TaskService.TaskDto(
+                initialTaskId,
+                agentId,
+                agent.getName(),
+                "ctx-5512",
+                TaskState.SUBMITTED.name(),
+                Map.of("query", "Bogota weather"),
+                null,
+                null,
+                java.time.ZonedDateTime.now(),
+                java.time.ZonedDateTime.now()
+        );
+        when(persistenceService.createSubmittedTask(eq(agent), eq("ctx-5512"), any())).thenReturn(initialDto);
+
+        Map<String, Object> errorResponseBody = Map.of(
+                "status", "error",
+                "result", "Weather provider timeout"
+        );
+
+        TaskService.TaskDto failedDto = new TaskService.TaskDto(
+                initialTaskId,
+                agentId,
+                agent.getName(),
+                "ctx-5512",
+                TaskState.FAILED.name(),
+                Map.of("query", "Bogota weather"),
+                errorResponseBody,
+                "Weather provider timeout",
+                java.time.ZonedDateTime.now(),
+                java.time.ZonedDateTime.now()
+        );
+
+        when(persistenceService.updateTaskResult(eq(initialTaskId), eq(TaskState.FAILED), eq(errorResponseBody), eq("Weather provider timeout")))
+                .thenReturn(failedDto);
+
+        when(restClient.post()).thenReturn(requestBodyUriSpec);
+        when(requestBodyUriSpec.uri(any(URI.class))).thenReturn(requestBodySpec);
+        when(requestBodySpec.contentType(MediaType.APPLICATION_JSON)).thenReturn(requestBodySpec);
+        when(requestBodySpec.header(anyString(), anyString())).thenReturn(requestBodySpec);
+        when(requestBodySpec.body(any(Object.class))).thenReturn(requestBodySpec);
+        when(requestBodySpec.retrieve()).thenReturn(responseSpec);
+        when(responseSpec.body(any(ParameterizedTypeReference.class))).thenReturn(errorResponseBody);
+
+        TaskService.SubmitTaskRequest request = new TaskService.SubmitTaskRequest(agentId, "ctx-5512", Map.of("query", "Bogota weather"), false);
+        TaskService.TaskExecutionResponse result = taskService.submitTask(request, false);
+
+        assertThat(result.task().state()).isEqualTo("FAILED");
+        assertThat(result.task().errorDetail()).isEqualTo("Weather provider timeout");
+        verify(persistenceService).updateTaskResult(eq(initialTaskId), eq(TaskState.FAILED), eq(errorResponseBody), eq("Weather provider timeout"));
+        verify(eventPublisher).publishTaskUpdated(failedDto);
+    }
+
+    @Test
+    @DisplayName("F1: Should fallback to 'error' key or default message when result is absent in error status")
+    @SuppressWarnings("unchecked")
+    void shouldFallbackWhenResultIsAbsentInErrorStatus() {
+        UUID taskId = UUID.randomUUID();
+        Map<String, Object> errorBodyWithFallback = Map.of(
+                "status", "error",
+                "error", "Internal downservice error"
+        );
+
+        when(restClient.post()).thenReturn(requestBodyUriSpec);
+        when(requestBodyUriSpec.uri(any(URI.class))).thenReturn(requestBodySpec);
+        when(requestBodySpec.contentType(MediaType.APPLICATION_JSON)).thenReturn(requestBodySpec);
+        when(requestBodySpec.header(anyString(), anyString())).thenReturn(requestBodySpec);
+        when(requestBodySpec.body(any(Object.class))).thenReturn(requestBodySpec);
+        when(requestBodySpec.retrieve()).thenReturn(responseSpec);
+        when(responseSpec.body(any(ParameterizedTypeReference.class))).thenReturn(errorBodyWithFallback);
+
+        TaskService.TaskDto failedDto = new TaskService.TaskDto(
+                taskId,
+                UUID.randomUUID(),
+                "FallbackAgent",
+                "ctx-fb",
+                TaskState.FAILED.name(),
+                Map.of("input", "test"),
+                errorBodyWithFallback,
+                "Internal downservice error",
+                java.time.ZonedDateTime.now(),
+                java.time.ZonedDateTime.now()
+        );
+        when(persistenceService.updateTaskResult(eq(taskId), eq(TaskState.FAILED), eq(errorBodyWithFallback), eq("Internal downservice error")))
+                .thenReturn(failedDto);
+
+        TaskService.TaskDto result = taskService.executeDownstreamProxy(
+                taskId, "ctx-fb", "FallbackAgent", "https://fallback.agent.io",
+                Map.of("input", "test"), "corr-1", "trace-1"
+        );
+
+        assertThat(result.state()).isEqualTo("FAILED");
+        assertThat(result.errorDetail()).isEqualTo("Internal downservice error");
+    }
+
+    @Test
+    @DisplayName("F2: Should inject contextId into outgoing HTTP payload when not present in request payload")
+    @SuppressWarnings("unchecked")
+    void shouldInjectContextIdIntoOutgoingPayloadIfNotPresent() {
+        UUID agentId = UUID.randomUUID();
+        Agent agent = new Agent();
+        agent.setId(agentId);
+        agent.setName("DownstreamAgent");
+        agent.setUrl("https://downstream.agent.io");
+        agent.setStatus("HEALTHY");
+
+        when(agentRepository.findById(agentId)).thenReturn(Optional.of(agent));
+
+        UUID initialTaskId = UUID.randomUUID();
+        TaskService.TaskDto initialDto = new TaskService.TaskDto(
+                initialTaskId,
+                agentId,
+                agent.getName(),
+                "ctx-injected-99",
+                TaskState.SUBMITTED.name(),
+                Map.of("query", "forecast"),
+                null,
+                null,
+                java.time.ZonedDateTime.now(),
+                java.time.ZonedDateTime.now()
+        );
+        when(persistenceService.createSubmittedTask(eq(agent), eq("ctx-injected-99"), any())).thenReturn(initialDto);
+
+        when(restClient.post()).thenReturn(requestBodyUriSpec);
+        when(requestBodyUriSpec.uri(any(URI.class))).thenReturn(requestBodySpec);
+        when(requestBodySpec.contentType(MediaType.APPLICATION_JSON)).thenReturn(requestBodySpec);
+        when(requestBodySpec.header(anyString(), anyString())).thenReturn(requestBodySpec);
+        when(requestBodySpec.body(any(Object.class))).thenReturn(requestBodySpec);
+        when(requestBodySpec.retrieve()).thenReturn(responseSpec);
+        when(responseSpec.body(any(ParameterizedTypeReference.class))).thenReturn(Map.of("status", "ok"));
+
+        TaskService.SubmitTaskRequest request = new TaskService.SubmitTaskRequest(agentId, "ctx-injected-99", Map.of("query", "forecast"), false);
+        taskService.submitTask(request, false);
+
+        ArgumentCaptor<Object> bodyCaptor = ArgumentCaptor.forClass(Object.class);
+        verify(requestBodySpec).body(bodyCaptor.capture());
+
+        assertThat(bodyCaptor.getValue()).isInstanceOf(Map.class);
+        Map<String, Object> capturedPayload = (Map<String, Object>) bodyCaptor.getValue();
+        assertThat(capturedPayload)
+                .containsEntry("contextId", "ctx-injected-99")
+                .containsEntry("query", "forecast");
+    }
+
+    @Test
+    @DisplayName("F2: Should preserve existing contextId in payload without overwriting")
+    @SuppressWarnings("unchecked")
+    void shouldPreserveExistingContextIdInPayload() {
+        UUID taskId = UUID.randomUUID();
+        Map<String, Object> inputPayload = Map.of(
+                "contextId", "already-present-ctx",
+                "query", "custom"
+        );
+
+        when(restClient.post()).thenReturn(requestBodyUriSpec);
+        when(requestBodyUriSpec.uri(any(URI.class))).thenReturn(requestBodySpec);
+        when(requestBodySpec.contentType(MediaType.APPLICATION_JSON)).thenReturn(requestBodySpec);
+        when(requestBodySpec.header(anyString(), anyString())).thenReturn(requestBodySpec);
+        when(requestBodySpec.body(any(Object.class))).thenReturn(requestBodySpec);
+        when(requestBodySpec.retrieve()).thenReturn(responseSpec);
+        when(responseSpec.body(any(ParameterizedTypeReference.class))).thenReturn(Map.of("status", "ok"));
+
+        taskService.executeDownstreamProxy(
+                taskId, "different-ctx", "DownstreamAgent", "https://downstream.agent.io",
+                inputPayload, "corr-2", "trace-2"
+        );
+
+        ArgumentCaptor<Object> bodyCaptor = ArgumentCaptor.forClass(Object.class);
+        verify(requestBodySpec).body(bodyCaptor.capture());
+
+        Map<String, Object> capturedPayload = (Map<String, Object>) bodyCaptor.getValue();
+        assertThat(capturedPayload).containsEntry("contextId", "already-present-ctx");
     }
 }
