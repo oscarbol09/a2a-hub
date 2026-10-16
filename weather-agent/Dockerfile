@@ -20,7 +20,7 @@ RUN apk upgrade --no-cache && \
     adduser -u 10001 -S spring -G spring
 
 # Copy packaged jar from build stage
-COPY --from=build --chown=spring:spring /app/target/weather-agent-1.0.0-SNAPSHOT.jar app.jar
+COPY --from=build --chown=spring:spring /app/target/weather-agent-*.jar app.jar
 
 USER 10001:10001
 EXPOSE 8081
