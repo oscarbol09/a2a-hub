@@ -4,6 +4,8 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.env.Environment;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
@@ -24,16 +26,23 @@ public class ApiKeyAuthFilter extends OncePerRequestFilter {
     private static final String AUTH_HEADER = "Authorization";
     private static final String BEARER_PREFIX = "Bearer ";
 
-    private static final List<String> PUBLIC_ENDPOINTS = List.of(
+    private static final List<String> SWAGGER_ENDPOINTS = List.of(
             "/v3/api-docs",
             "/swagger-ui"
     );
     private static final Set<String> MUTATING_METHODS = Set.of("POST", "PUT", "DELETE", "PATCH");
 
     private final SecurityProperties securityProperties;
+    private final Environment env;
+
+    @Autowired
+    public ApiKeyAuthFilter(SecurityProperties securityProperties, @Autowired(required = false) Environment env) {
+        this.securityProperties = securityProperties;
+        this.env = env;
+    }
 
     public ApiKeyAuthFilter(SecurityProperties securityProperties) {
-        this.securityProperties = securityProperties;
+        this(securityProperties, null);
     }
 
     @Override
@@ -84,15 +93,23 @@ public class ApiKeyAuthFilter extends OncePerRequestFilter {
     }
 
     private boolean isProtectedEndpoint(String path, String method) {
-        if (isPublicPath(path) || isOutsideApi(path) || isOpenRead(method)) {
+        if (isSwaggerEndpoint(path)) {
+            return !isDevOrTest();
+        }
+
+        if (isOutsideApi(path) || isOpenRead(method)) {
             return false;
         }
 
         return true;
     }
 
-    private boolean isPublicPath(String path) {
-        return PUBLIC_ENDPOINTS.stream().anyMatch(path::startsWith);
+    private boolean isSwaggerEndpoint(String path) {
+        return SWAGGER_ENDPOINTS.stream().anyMatch(path::startsWith);
+    }
+
+    private boolean isDevOrTest() {
+        return env != null && (env.matchesProfiles("dev") || env.matchesProfiles("test"));
     }
 
     private boolean isOutsideApi(String path) {

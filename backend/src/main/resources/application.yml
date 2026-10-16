@@ -47,7 +47,7 @@ a2ahub:
     encryption-key: ${A2A_HUB_ENCRYPTION_KEY:}
     require-auth-for-reads: ${A2A_HUB_REQUIRE_AUTH_READS:false}
     ssrf:
-      allow-private-networks: ${A2A_HUB_ALLOW_PRIVATE_NETWORKS:false}
+      allow-private-networks: ${A2AHUB_SECURITY_SSRF_ALLOW_PRIVATE_NETWORKS:${A2A_HUB_ALLOW_PRIVATE_NETWORKS:false}}
   gemini:
     api-key: ${GEMINI_API_KEY:}
     model: ${GEMINI_MODEL:gemini-3.8-flash}
@@ -64,7 +64,8 @@ management:
         include: health
   endpoint:
     health:
-      show-details: never
+      show-details: when-authorized
+      roles: ACTUATOR_ADMIN
       probes:
         enabled: true
 

@@ -112,18 +112,22 @@ class ApiKeyAuthFilterTest {
         assertThat(response.getStatus()).isEqualTo(401);
     }
 
-    @ParameterizedTest(name = "GET {0} (requireAuthForReads={1}) should bypass auth")
+    @ParameterizedTest(name = "GET {0} in profile {1} (requireAuthForReads={2}) should bypass auth")
     @CsvSource({
-            "/v3/api-docs,                true",
-            "/v3/api-docs/swagger-config, true",
-            "/swagger-ui.html,            true",
-            "/swagger-ui/index.html,      true",
-            "/v3/api-docs,                false",
-            "/swagger-ui/index.html,      false"
+            "/v3/api-docs,                dev,  true",
+            "/v3/api-docs/swagger-config, dev,  true",
+            "/swagger-ui.html,            dev,  true",
+            "/swagger-ui/index.html,      dev,  true",
+            "/v3/api-docs,                test, false",
+            "/swagger-ui/index.html,      test, false"
     })
-    @DisplayName("Should let OpenAPI docs and Swagger UI bypass auth when an API key is configured")
-    void shouldBypassAuthForApiDocs(String path, boolean requireAuthForReads) throws ServletException, IOException {
+    @DisplayName("Should let OpenAPI docs and Swagger UI bypass auth when in dev or test profiles")
+    void shouldBypassAuthForApiDocsInDevOrTest(String path, String profile, boolean requireAuthForReads) throws ServletException, IOException {
         // given
+        org.springframework.mock.env.MockEnvironment mockEnv = new org.springframework.mock.env.MockEnvironment();
+        mockEnv.setActiveProfiles(profile);
+        ApiKeyAuthFilter envFilter = new ApiKeyAuthFilter(securityProperties, mockEnv);
+
         securityProperties.setApiKey("secret-token-123");
         securityProperties.setRequireAuthForReads(requireAuthForReads);
 
@@ -131,7 +135,86 @@ class ApiKeyAuthFilterTest {
         MockHttpServletResponse response = new MockHttpServletResponse();
 
         // when
-        filter.doFilterInternal(request, response, filterChain);
+        envFilter.doFilterInternal(request, response, filterChain);
+
+        // then
+        verify(filterChain).doFilter(request, response);
+        assertThat(response.getStatus()).isEqualTo(200);
+    }
+
+    @ParameterizedTest(name = "GET {0} in prod profile without API key should be blocked")
+    @CsvSource({
+            "/v3/api-docs",
+            "/v3/api-docs/swagger-config",
+            "/swagger-ui.html",
+            "/swagger-ui/index.html"
+    })
+    @DisplayName("Should block unauthenticated OpenAPI docs and Swagger UI in non-dev/test environments")
+    void shouldBlockUnauthenticatedApiDocsInProduction(String path) throws ServletException, IOException {
+        // given
+        org.springframework.mock.env.MockEnvironment prodEnv = new org.springframework.mock.env.MockEnvironment();
+        prodEnv.setActiveProfiles("prod");
+        ApiKeyAuthFilter prodFilter = new ApiKeyAuthFilter(securityProperties, prodEnv);
+
+        securityProperties.setApiKey("secret-token-123");
+
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", path);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        // when
+        prodFilter.doFilterInternal(request, response, filterChain);
+
+        // then
+        verify(filterChain, never()).doFilter(request, response);
+        assertThat(response.getStatus()).isEqualTo(401);
+        assertThat(response.getContentAsString()).contains("Unauthorized");
+    }
+
+    @ParameterizedTest(name = "GET {0} in prod profile with valid API key should be allowed")
+    @CsvSource({
+            "/v3/api-docs",
+            "/swagger-ui/index.html"
+    })
+    @DisplayName("Should allow authenticated OpenAPI docs and Swagger UI in non-dev/test environments")
+    void shouldAllowAuthenticatedApiDocsInProduction(String path) throws ServletException, IOException {
+        // given
+        org.springframework.mock.env.MockEnvironment prodEnv = new org.springframework.mock.env.MockEnvironment();
+        prodEnv.setActiveProfiles("prod");
+        ApiKeyAuthFilter prodFilter = new ApiKeyAuthFilter(securityProperties, prodEnv);
+
+        securityProperties.setApiKey("secret-token-123");
+
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", path);
+        request.addHeader("X-API-Key", "secret-token-123");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        // when
+        prodFilter.doFilterInternal(request, response, filterChain);
+
+        // then
+        verify(filterChain).doFilter(request, response);
+        assertThat(response.getStatus()).isEqualTo(200);
+    }
+
+    @ParameterizedTest(name = "GET {0} in prod profile when apiKey is not configured should be allowed")
+    @CsvSource({
+            "/v3/api-docs",
+            "/swagger-ui/index.html"
+    })
+    @DisplayName("Should allow OpenAPI docs and Swagger UI when apiKey is not configured regardless of profile")
+    void shouldAllowApiDocsWhenApiKeyNotConfigured(String path) throws ServletException, IOException {
+        // given
+        org.springframework.mock.env.MockEnvironment prodEnv = new org.springframework.mock.env.MockEnvironment();
+        prodEnv.setActiveProfiles("prod");
+        ApiKeyAuthFilter prodFilter = new ApiKeyAuthFilter(securityProperties, prodEnv);
+
+        securityProperties.setApiKey(null);
+
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", path);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        // when
+        prodFilter.doFilterInternal(request, response, filterChain);
 
         // then
         verify(filterChain).doFilter(request, response);

@@ -39,20 +39,25 @@ public class AesGcmAttributeConverter implements AttributeConverter<String, Stri
     @Autowired
     public void configure(SecurityProperties properties, @Autowired(required = false) org.springframework.core.env.Environment env) {
         String key = properties.getEncryptionKey();
-        boolean isProd = env != null && (env.matchesProfiles("prod") || env.matchesProfiles("production"));
+        boolean isDevOrTest = env != null && (env.matchesProfiles("dev") || env.matchesProfiles("test"));
+        boolean isRestrictedProfile = env != null && (
+                env.matchesProfiles("prod") ||
+                env.matchesProfiles("production") ||
+                env.matchesProfiles("staging") ||
+                env.matchesProfiles("uat")
+        );
+        boolean isUnsafeEnvironment = env != null && (isRestrictedProfile || !isDevOrTest);
+        boolean isKeyDefaultOrMissing = key == null || key.isBlank() || DEFAULT_DEV_KEY.equals(key.trim());
 
-        if (key != null && !key.isBlank()) {
-            if (isProd && DEFAULT_DEV_KEY.equals(key.trim())) {
-                throw new IllegalStateException("Default development master encryption key cannot be used in production environment. Configure A2A_HUB_ENCRYPTION_KEY.");
-            }
-            initKey(key);
-            log.info("AES-GCM master encryption key configured from application environment");
-        } else {
-            if (isProd) {
-                throw new IllegalStateException("A2A_HUB_ENCRYPTION_KEY environment variable must be set in production mode with at least 16 characters.");
+        if (isKeyDefaultOrMissing) {
+            if (isUnsafeEnvironment) {
+                throw new IllegalStateException("A2A_HUB_ENCRYPTION_KEY environment variable must be configured with at least 16 characters for cryptographic safety outside local dev/test environments.");
             }
             initKey(DEFAULT_DEV_KEY);
             log.warn("Running with default master encryption key in development mode. For production, set A2A_HUB_ENCRYPTION_KEY environment variable.");
+        } else {
+            initKey(key);
+            log.info("AES-GCM master encryption key configured from application environment");
         }
     }
 

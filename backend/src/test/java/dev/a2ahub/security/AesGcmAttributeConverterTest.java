@@ -58,23 +58,74 @@ class AesGcmAttributeConverterTest {
     }
 
     @Test
-    @DisplayName("Should fail fast in production profile if encryption key is default or missing")
-    void shouldFailFastInProductionWithDefaultKey() {
-        org.springframework.mock.env.MockEnvironment mockEnv = new org.springframework.mock.env.MockEnvironment();
-        mockEnv.setActiveProfiles("prod");
+    @DisplayName("Should fail fast outside dev/test if encryption key is default or missing")
+    void shouldFailFastOutsideDevOrTestWithDefaultKey() {
+        for (String profile : new String[]{"prod", "production", "staging", "uat"}) {
+            org.springframework.mock.env.MockEnvironment restrictedEnv = new org.springframework.mock.env.MockEnvironment();
+            restrictedEnv.setActiveProfiles(profile);
 
+            SecurityProperties defaultProps = new SecurityProperties();
+            defaultProps.setEncryptionKey("a2a-hub-default-master-encryption-key-32bytes!");
+
+            org.assertj.core.api.Assertions.assertThatThrownBy(() -> converter.configure(defaultProps, restrictedEnv))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("A2A_HUB_ENCRYPTION_KEY");
+
+            SecurityProperties emptyProps = new SecurityProperties();
+            emptyProps.setEncryptionKey("");
+
+            org.assertj.core.api.Assertions.assertThatThrownBy(() -> converter.configure(emptyProps, restrictedEnv))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("A2A_HUB_ENCRYPTION_KEY");
+        }
+
+        // Environment with no dev or test profile (e.g. empty or default profile)
+        org.springframework.mock.env.MockEnvironment defaultEnv = new org.springframework.mock.env.MockEnvironment();
         SecurityProperties defaultProps = new SecurityProperties();
         defaultProps.setEncryptionKey("a2a-hub-default-master-encryption-key-32bytes!");
 
-        org.assertj.core.api.Assertions.assertThatThrownBy(() -> converter.configure(defaultProps, mockEnv))
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> converter.configure(defaultProps, defaultEnv))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("Default development master encryption key cannot be used in production");
+                .hasMessageContaining("A2A_HUB_ENCRYPTION_KEY");
+    }
 
-        SecurityProperties emptyProps = new SecurityProperties();
-        emptyProps.setEncryptionKey("");
+    @Test
+    @DisplayName("Should allow default encryption key in dev and test profiles")
+    void shouldAllowDefaultKeyInDevAndTestProfiles() {
+        for (String profile : new String[]{"dev", "test"}) {
+            org.springframework.mock.env.MockEnvironment safeEnv = new org.springframework.mock.env.MockEnvironment();
+            safeEnv.setActiveProfiles(profile);
 
-        org.assertj.core.api.Assertions.assertThatThrownBy(() -> converter.configure(emptyProps, mockEnv))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("A2A_HUB_ENCRYPTION_KEY environment variable must be set");
+            SecurityProperties defaultProps = new SecurityProperties();
+            defaultProps.setEncryptionKey("a2a-hub-default-master-encryption-key-32bytes!");
+
+            org.junit.jupiter.api.Assertions.assertDoesNotThrow(() -> converter.configure(defaultProps, safeEnv));
+
+            SecurityProperties emptyProps = new SecurityProperties();
+            emptyProps.setEncryptionKey("");
+
+            org.junit.jupiter.api.Assertions.assertDoesNotThrow(() -> converter.configure(emptyProps, safeEnv));
+        }
+    }
+
+    @Test
+    @DisplayName("Should allow custom encryption key in any profile including prod")
+    void shouldAllowCustomKeyInProduction() {
+        org.springframework.mock.env.MockEnvironment prodEnv = new org.springframework.mock.env.MockEnvironment();
+        prodEnv.setActiveProfiles("prod");
+
+        SecurityProperties customProps = new SecurityProperties();
+        customProps.setEncryptionKey("super-secure-production-key-32-bytes!");
+
+        org.junit.jupiter.api.Assertions.assertDoesNotThrow(() -> converter.configure(customProps, prodEnv));
+    }
+
+    @Test
+    @DisplayName("Should allow default key when environment is null for backward compatibility")
+    void shouldAllowDefaultKeyWhenEnvIsNull() {
+        SecurityProperties defaultProps = new SecurityProperties();
+        defaultProps.setEncryptionKey("a2a-hub-default-master-encryption-key-32bytes!");
+
+        org.junit.jupiter.api.Assertions.assertDoesNotThrow(() -> converter.configure(defaultProps, null));
     }
 }
