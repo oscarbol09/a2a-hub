@@ -25,7 +25,7 @@ The A2A-Hub Frontend provides an operator and developer interface for discoverin
 - **Registry & Registration**: Search, filter, inspect, and dynamically onboard agents via `.well-known/agent-card.json`.
 - **Hybrid Discovery**: Semantic similarity search and tag/skill exploration backed by PostgreSQL `pgvector`.
 - **AI Task Orchestration**: Interactive task submission with automated triage suggestions powered by Google Gemini (`gemini-3.8-flash`) and fallback to cosine similarity.
-- **Real-time Health & Task Streaming**: Live status and execution updates via STOMP WebSockets (`/topic/health` and `/topic/tasks`).
+- **Real-time Health & Task Streaming**: Live status and execution updates via STOMP WebSockets (`/topic/agents/status` and `/topic/tasks`).
 
 ---
 
@@ -85,7 +85,7 @@ frontend/src/
 
 ### `agentStore.ts`
 - Manages cached agent profiles, active filters, search queries, and selected agent state.
-- Subscribes to STOMP destination `/topic/health`.
+- Subscribes to STOMP destination `/topic/agents/status`.
 - Handles incoming health updates with client-side deduplication to prevent UI re-render thrashing.
 
 ### `taskStore.ts`
@@ -145,8 +145,9 @@ Create a `.env` or `.env.local` file in the `frontend` root to customize connect
 
 | Variable | Default Value | Description |
 | :--- | :--- | :--- |
-| `VITE_API_BASE_URL` | `http://localhost:8080/api/v1` | Target URL for A2A-Hub backend REST endpoints |
-| `VITE_WS_ENDPOINT` | `ws://localhost:8080/ws` | WebSocket endpoint for STOMP health/task subscriptions |
+| `VITE_API_URL` | `http://localhost:8080/api/v1` | Target URL for A2A-Hub backend REST endpoints |
+| `VITE_WS_URL` | `ws://localhost:8080/ws` | WebSocket endpoint for STOMP status/task subscriptions |
+| `VITE_API_KEY` | *(optional)* | Optional API key for authenticated endpoints and WebSocket STOMP CONNECT (`X-API-Key`) |
 
 ---
 

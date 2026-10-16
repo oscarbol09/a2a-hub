@@ -98,7 +98,7 @@ This project addresses the operational registry gap discussed in [a2aproject/a2a
 > 
 > - **A2A Protocol Conformance:** Uses native domain mapping conforming to the [A2A Protocol Specification v1.0](AGENTS.md). Direct integration with the official `a2a-java-sdk-client` will be completed once published to Maven Central.
 > - **Deployment Topology:** Currently single-node with in-process Virtual Thread task dispatching. Resilient task recovery is active on node reboot. Distributed coordination (ShedLock, Kafka/durable outbox, multi-tenant RBAC) is planned on the [ROADMAP.md](ROADMAP.md).
-> - **Network Security:** Production deployments must keep `A2AHUB_SECURITY_SSRF_ALLOW_PRIVATE_NETWORKS=false` to enforce socket-level SSRF defenses.
+> - **Network Security:** Production deployments must keep `A2AHUB_SECURITY_SSRF_ALLOW_PRIVATE_NETWORKS=false` (or `A2A_HUB_ALLOW_PRIVATE_NETWORKS=false`) to enforce socket-level SSRF defenses.
 
 ---
 
@@ -149,7 +149,7 @@ Open `http://localhost:5173` to access the registry, live topology monitor, and 
 | `A2A_HUB_API_KEY` | `a2ahub.security.api-key` | *(empty)* | If set, enforces `X-API-Key` or `Authorization: Bearer` on mutating endpoints. If empty, local open mode is enabled. |
 | `A2A_HUB_ENCRYPTION_KEY` | `a2ahub.security.encryption-key` | *(dev fallback)* | Master secret for AES-256-GCM token encryption. Must be at least 16 characters in production. |
 | `A2A_HUB_REQUIRE_AUTH_READS` | `a2ahub.security.require-auth-for-reads` | `false` | If `true`, requires API key authentication for read-only GET endpoints. |
-| `A2A_HUB_ALLOW_PRIVATE_NETWORKS` | `a2ahub.security.ssrf.allow-private-networks` | `false` | If `false`, blocks loopback, private RFC 1918, link-local, and cloud metadata addresses. Set `true` only for containerized test networks. |
+| `A2AHUB_SECURITY_SSRF_ALLOW_PRIVATE_NETWORKS` / `A2A_HUB_ALLOW_PRIVATE_NETWORKS` | `a2ahub.security.ssrf.allow-private-networks` | `false` | If `false`, blocks loopback, private RFC 1918, link-local, and cloud metadata addresses. Set `true` only for containerized test networks. |
 | `GEMINI_API_KEY` | `a2ahub.gemini.api-key` | *(empty)* | Google Gemini API key for AI orchestration triage. If empty, orchestrator falls back to vector similarity. |
 | `A2A_HUB_HEALTH_INTERVAL_MS` | `a2ahub.health.interval-ms` | `30000` | Probing frequency in milliseconds across all registered agents. |
 | `A2A_HUB_HEALTH_RETENTION_HOURS` | `a2ahub.health.retention-hours` | `48` | Retention period for health check logs. Hourly cron executes chunked batch CTE pruning for records exceeding this threshold. |

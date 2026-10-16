@@ -71,12 +71,12 @@ Key properties configured in `src/main/resources/application.yml`:
 | Property | Default | Purpose |
 | :--- | :--- | :--- |
 | `spring.threads.virtual.enabled` | `true` | Enables Project Loom Virtual Threads for Undertow and async executors |
-| `a2ahub.security.ssrf.allow-private-networks` | `false` | When `false`, strictly rejects private (RFC 1918), loopback, and cloud metadata IPs |
-| `a2ahub.health.interval-ms` | `30000` | Frequency of background agent health probes |
-| `a2ahub.health.timeout-ms` | `3000` | HTTP probe socket timeout |
-| `a2ahub.health.retention-days` | `7` | Retention window for historical probe records |
-| `a2ahub.orchestration.model-name` | `gemini-3.8-flash` | Frontier Gemini model for agent triage |
-| `a2ahub.orchestration.temperature` | `0.0` | Deterministic temperature for routing classification |
+| `a2ahub.security.ssrf.allow-private-networks` | `false` | When `false`, strictly rejects private (RFC 1918), loopback, and cloud metadata IPs (`A2AHUB_SECURITY_SSRF_ALLOW_PRIVATE_NETWORKS` / `A2A_HUB_ALLOW_PRIVATE_NETWORKS`) |
+| `a2ahub.gemini.api-key` | *(empty)* | Google Gemini API key (`GEMINI_API_KEY`) for AI triage |
+| `a2ahub.gemini.model` | `gemini-3.8-flash` | Frontier Gemini model (`GEMINI_MODEL`) for agent triage |
+| `a2ahub.health.interval-ms` | `30000` | Frequency of background agent health probes (`A2A_HUB_HEALTH_INTERVAL_MS`) |
+| `a2ahub.health.retention-hours` | `48` | Retention period in hours for historical probe records (`A2A_HUB_HEALTH_RETENTION_HOURS`) |
+| `a2ahub.bootstrap.agents` | *(empty)* | Comma-delimited seed agent URLs (`A2A_HUB_BOOTSTRAP_AGENTS`) |
 
 ---
 

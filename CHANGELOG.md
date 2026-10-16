@@ -19,6 +19,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.0-alpha] - 2026-10-15
 
 ### Added
+- **Token Bucket Rate Limiting (`RateLimitFilter`):** In-memory non-blocking token bucket filter (120 req/min) protecting sensitive endpoints (`/api/v1/agents`, `/api/v1/tasks`) with RFC 7807 `ProblemDetail` (HTTP 429) and `Retry-After: 60`.
+- **A2A Error Contract Conformance:** Downstream responses with `status: "error"` now deterministically transition tasks to `FAILED`, capturing error payloads to `error_detail`.
+- **Canonical A2A Body Context:** Injected `contextId` into outgoing downstream request body for strict A2A Protocol v1.0 interoperability.
+- **Reactive Health Probe Pipeline:** Chained `.thenAccept` callbacks on virtual thread health probes, guaranteeing immediate asynchronous persistence without loss from batch timeouts.
+- **Frontend API Key & WebSocket Auth:** Integrated request interceptor for `X-API-Key` in Axios and STOMP `connectHeaders` credentials in WebSocket client.
+- **Encryption Key Environment Hardening:** Prohibited default development encryption key outside explicit `dev`/`test` environments.
+- **OpenAPI / Swagger Auth Protection:** Enforced API key requirement for `/v3/api-docs` and `/swagger-ui` in production-like profiles.
+- **Production Fail-Fast for Reference Agents:** Enforced startup validation requiring `GEMINI_API_KEY` under `prod`/`production` profiles.
+- **Quality Gates:** Added minimum coverage thresholds for JaCoCo (75% LINE) and Vitest (75%).
 - **Socket-Level DNS Pinning & TOCTOU Elimination:** Integrated Apache HttpClient 5 with custom `DnsResolver` wired directly to `SsrfValidator`. Pre-connection socket-level IP validation blocks DNS rebinding attacks (CWE-367 / CWE-918) against loopback, private RFC 1918 networks, and cloud metadata.
 - **Calibrated Vector Similarity Metrics:** Replaced hardcoded fallback confidence (`0.90`) in `A2AOrchestrator` with real, mathematically bounded cosine similarity `(1.0 - (embedding <=> cast(:queryVector as vector)))` projected from `AgentRepository`.
 - **Startup Task Reconciliation:** Added automated recovery for tasks stranded in `SUBMITTED` state across server crashes or process restarts, transitioning them to `FAILED` with diagnostic context.
