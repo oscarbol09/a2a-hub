@@ -261,4 +261,92 @@ class AgentHealthMonitorTest {
         CircuitBreaker cb = healthMonitor.getCircuitBreakerRegistry().circuitBreaker("degraded.agent.io");
         assertThat(cb.getState()).isEqualTo(CircuitBreaker.State.CLOSED);
     }
+
+    @Test
+    @DisplayName("F9: Should record probe results reactively in real-time as each probe completes without waiting for slow peers")
+    @SuppressWarnings("unchecked")
+    void shouldRecordProbeResultsReactivelyAsEachCompletes() throws Exception {
+        UUID fastAgentId = UUID.randomUUID();
+        Agent fastAgent = new Agent();
+        fastAgent.setId(fastAgentId);
+        fastAgent.setName("FastAgent");
+        fastAgent.setUrl("https://fast.agent.io");
+
+        UUID slowAgentId = UUID.randomUUID();
+        Agent slowAgent = new Agent();
+        slowAgent.setId(slowAgentId);
+        slowAgent.setName("SlowAgent");
+        slowAgent.setUrl("https://slow.agent.io");
+
+        when(agentRepository.findAll()).thenReturn(List.of(fastAgent, slowAgent));
+
+        AgentCard fastCard = new AgentCard("FastAgent", "Fast", "https://fast.agent.io", "1.0", List.of(), Map.of(), List.of());
+        AgentCard slowCard = new AgentCard("SlowAgent", "Slow", "https://slow.agent.io", "1.0", List.of(), Map.of(), List.of());
+
+        CountDownLatch slowAgentStartedLatch = new CountDownLatch(1);
+        CountDownLatch slowAgentUnblockLatch = new CountDownLatch(1);
+
+        RestClient.RequestHeadersUriSpec fastUriSpec = mock(RestClient.RequestHeadersUriSpec.class);
+        RestClient.ResponseSpec fastRespSpec = mock(RestClient.ResponseSpec.class);
+        when(fastRespSpec.body(AgentCard.class)).thenReturn(fastCard);
+        when(fastUriSpec.retrieve()).thenReturn(fastRespSpec);
+
+        RestClient.RequestHeadersUriSpec slowUriSpec = mock(RestClient.RequestHeadersUriSpec.class);
+        RestClient.ResponseSpec slowRespSpec = mock(RestClient.ResponseSpec.class);
+        when(slowRespSpec.body(AgentCard.class)).thenReturn(slowCard);
+        when(slowUriSpec.retrieve()).thenAnswer(inv -> {
+            slowAgentStartedLatch.countDown();
+            slowAgentUnblockLatch.await(5, TimeUnit.SECONDS);
+            return slowRespSpec;
+        });
+
+        when(probeClient.get()).thenReturn(requestHeadersUriSpec);
+        when(requestHeadersUriSpec.uri(URI.create("https://fast.agent.io/.well-known/agent-card.json"))).thenReturn(fastUriSpec);
+        when(requestHeadersUriSpec.uri(URI.create("https://slow.agent.io/.well-known/agent-card.json"))).thenReturn(slowUriSpec);
+
+        CompletableFuture<Void> runFuture = CompletableFuture.runAsync(() -> healthMonitor.runHealthChecks());
+
+        assertThat(slowAgentStartedLatch.await(3, TimeUnit.SECONDS)).isTrue();
+
+        // While slow agent is still blocked, fast agent probe MUST have been recorded reactively
+        verify(persistenceService, timeout(1000)).recordProbeResult(eq(fastAgentId), eq("https://fast.agent.io"), eq("HEALTHY"), anyInt(), isNull());
+
+        // Unblock slow agent
+        slowAgentUnblockLatch.countDown();
+        runFuture.get(5, TimeUnit.SECONDS);
+
+        verify(persistenceService, timeout(1000)).recordProbeResult(eq(slowAgentId), eq("https://slow.agent.io"), eq("HEALTHY"), anyInt(), isNull());
+    }
+
+    @Test
+    @DisplayName("F9: Should record all agents during runHealthChecks under normal execution")
+    @SuppressWarnings("unchecked")
+    void shouldRecordAllAgentsDuringRunHealthChecks() {
+        UUID agent1Id = UUID.randomUUID();
+        Agent agent1 = new Agent();
+        agent1.setId(agent1Id);
+        agent1.setName("Agent1");
+        agent1.setUrl("https://agent1.io");
+
+        UUID agent2Id = UUID.randomUUID();
+        Agent agent2 = new Agent();
+        agent2.setId(agent2Id);
+        agent2.setName("Agent2");
+        agent2.setUrl("https://agent2.io");
+
+        when(agentRepository.findAll()).thenReturn(List.of(agent1, agent2));
+
+        AgentCard card1 = new AgentCard("Agent1", "Agent 1", "https://agent1.io", "1.0", List.of(), Map.of(), List.of());
+        AgentCard card2 = new AgentCard("Agent2", "Agent 2", "https://agent2.io", "1.0", List.of(), Map.of(), List.of());
+
+        when(probeClient.get()).thenReturn(requestHeadersUriSpec);
+        when(requestHeadersUriSpec.uri(any(URI.class))).thenReturn(requestHeadersUriSpec);
+        when(requestHeadersUriSpec.retrieve()).thenReturn(responseSpec);
+        when(responseSpec.body(AgentCard.class)).thenReturn(card1).thenReturn(card2);
+
+        healthMonitor.runHealthChecks();
+
+        verify(persistenceService, timeout(2000)).recordProbeResult(eq(agent1Id), eq("https://agent1.io"), eq("HEALTHY"), anyInt(), isNull());
+        verify(persistenceService, timeout(2000)).recordProbeResult(eq(agent2Id), eq("https://agent2.io"), eq("HEALTHY"), anyInt(), isNull());
+    }
 }
