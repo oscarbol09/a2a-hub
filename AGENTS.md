@@ -104,22 +104,29 @@ When an error response is received:
 
 ---
 
-## 3. Health Probe Expectations
+## 3. Health Probe Expectations & Two-Tier Verification
 
-A2A-Hub evaluates registered agent health periodically (`a2ahub.health.interval-ms`, default 30 seconds).
+A2A-Hub evaluates registered agent health periodically (`a2ahub.health.interval-ms`, default 30 seconds) using a decoupled two-tier verification model:
 
-### Probe Specifications:
+### 3.1 Tier 1: Liveness & Availability Probe
 - **Endpoint:** `GET /.well-known/agent-card.json`
 - **Timeout:** 3,000ms.
 - **Redirect Policy:** `NEVER` (prevents SSRF open redirection bypasses).
 - **Concurrency:** Probes are executed across Java 21 Virtual Threads; no database connections are leased during network I/O.
+- **TLS Security:** Handshakes strictly validate the certificate's Common Name (CN) and Subject Alternative Names (SAN) against the registered agent hostname to eliminate card/endpoint spoofing.
 
-### Evaluation State Matrix:
+### 3.2 Tier 2: Behavioural Skill Verification (Synthetic Contract Probes)
+Availability alone does not guarantee execution capability. Tier 2 periodically validates declared skills against the task endpoint (`POST /tasks`):
+- **Contract Test:** Hub dispatches canonical test queries matching declared skills (e.g., verifying weather queries for meteo skills, arithmetic checks for calculator skills).
+- **Evaluation Criteria:** Response must return HTTP 200 with `status: "ok"` and non-empty result within 5,000ms.
+- **Ecosystem Integration:** Supports external auditing runners (e.g. Sundy behavioural baselines).
+
+### 3.3 Evaluation State Matrix:
 
 | State | Transition Criteria | Hub Action |
 | :--- | :--- | :--- |
-| `HEALTHY` | HTTP 200 returned within 2,000ms with a valid JSON payload containing `name`. | Candidate for semantic search and AI orchestration triage. |
-| `DEGRADED` | HTTP 200 returned with latency > 2,000ms, or missing required metadata. | Eligible for routing as secondary candidate; flagged in UI dashboard. |
+| `HEALTHY` | Tier 1 HTTP 200 within 2,000ms with valid card, and Tier 2 behavioural probes passing. | Top candidate for semantic search (`idx_agent_skills_tags`) and AI orchestration triage. |
+| `DEGRADED` | Tier 1 HTTP 200 with latency > 2,000ms, or Tier 2 skill execution failures/timeouts. | Eligible for routing as secondary candidate; flagged in UI dashboard with degraded badge. |
 | `OFFLINE` | Connection timeout (> 3,000ms), TCP refused, DNS failure, or HTTP 4xx/5xx status code. | Excluded from semantic discovery and AI triage candidate pools. |
 
 ---

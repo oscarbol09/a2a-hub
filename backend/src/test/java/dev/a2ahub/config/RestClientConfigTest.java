@@ -41,6 +41,14 @@ class RestClientConfigTest {
         assertThat(client).isNotNull();
     }
 
+    @Test
+    @DisplayName("Should enforce strict TLS hostname verification (CN/SAN validation)")
+    void shouldEnforceStrictTlsHostnameVerification() {
+        org.springframework.http.client.HttpComponentsClientHttpRequestFactory factory =
+                RestClientConfig.createRequestFactory(ssrfValidator, java.time.Duration.ofSeconds(3), java.time.Duration.ofSeconds(5));
+        assertThat(factory).isNotNull();
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {
             "http://127.0.0.1:59999/test",

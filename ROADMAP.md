@@ -57,11 +57,16 @@ Milestones are prioritized by production reliability, protocol interoperability,
 
 ## Short-Term Milestones (v0.2.0 - v0.3.0)
 
-Target: Cryptographic transport security, distributed telemetry, and egress throttling.
+Target: Cryptographic transport security, two-tier behavioural verification, distributed telemetry, and egress throttling.
 
-- [ ] **Mutual TLS (mTLS) Handshake Support:**
-  - Configurable X.509 keystores/truststores for downstream agent HTTP probes and task proxies.
-  - Verification of agent certificate Common Name (CN) and Subject Alternative Names (SANs) against registered URLs.
+- [ ] **Two-Tier Agent Health & Behavioural Contract Verification:**
+  - **Tier 1 (Availability & Liveness):** High-frequency lightweight probes to `GET /.well-known/agent-card.json` dispatched across Java 21 Virtual Threads (SSRF-hardened, non-blocking, zero DB connection leasing).
+  - **Tier 2 (Behavioural Verification):** Periodic synthetic contract probes validating declared agent skills against `POST /tasks` using deterministic canonical test queries (e.g. validating meteorological answers for weather skills, arithmetic logic for calculator skills).
+  - **Reputation & Verification State:** Decouple `HEALTHY` (Tier 1 + Tier 2 verified), `DEGRADED` (Tier 1 alive, Tier 2 failed/degraded), and `SKILLS_UNVERIFIED` within the semantic discovery pool (`idx_agent_skills_tags`) and AI orchestration triage.
+  - **Automated Ecosystem Baseline:** Integration of standard behavioural test suites (such as Sundy external verification runners) into CI and registry audits.
+- [ ] **TLS Hostname Verification & Strict CN/SAN Pinning:**
+  - Enforce explicit X.509 certificate Common Name (CN) and Subject Alternative Name (SAN) validation in Apache HttpClient 5 against registered agent hostnames. Eliminates card/endpoint decoupling where a valid public card points to an unverified or rogue backend.
+  - Configurable X.509 keystores/truststores for mutual TLS (mTLS) downstream agent HTTP probes and task proxies.
 - [ ] **Distributed Tracing with OpenTelemetry & W3C Trace Context:**
   - Native integration with Micrometer Tracing and OpenTelemetry Java agent.
   - End-to-end trace propagation across Hub HTTP endpoints, Virtual Thread workers, downstream agent proxies, and PostgreSQL JDBC statements.
