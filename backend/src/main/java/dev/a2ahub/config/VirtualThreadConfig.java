@@ -16,6 +16,7 @@ public class VirtualThreadConfig {
     public AsyncTaskExecutor healthProbeTaskExecutor() {
         SimpleAsyncTaskExecutor executor = new SimpleAsyncTaskExecutor("health-probe-worker-");
         executor.setVirtualThreads(true);
+        executor.setTaskDecorator(new MdcTaskDecorator());
         return executor;
     }
 }
