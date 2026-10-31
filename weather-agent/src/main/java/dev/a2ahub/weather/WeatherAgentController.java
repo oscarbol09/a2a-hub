@@ -119,7 +119,8 @@ public class WeatherAgentController {
 
         try {
             String result = chatClient.prompt()
-                    .user(u -> u.text("<user_query>\n{query}\n</user_query>").param("query", query))
+                    .user(u -> u.text("<user_query>\n{query}\n</user_query>")
+                            .param("query", escapeXml(query)))
                     .call()
                     .content();
             return TaskResponse.ok(result, contextId);
@@ -127,5 +128,10 @@ public class WeatherAgentController {
             log.error("Error executing ChatClient prompt for query [{}]: {}", query, ex.getMessage(), ex);
             return TaskResponse.error(ex.getMessage(), contextId);
         }
+    }
+
+    private static String escapeXml(String input) {
+        return input.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                .replace("\"", "&quot;").replace("'", "&apos;");
     }
 }
