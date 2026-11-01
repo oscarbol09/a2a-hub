@@ -61,6 +61,8 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/a2ahub
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
+      SPRING_PROFILES_ACTIVE: dev
+      A2A_HUB_ENCRYPTION_KEY: ${A2A_HUB_ENCRYPTION_KEY:-a2a-hub-default-master-encryption-key-32bytes!}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       # SECURITY WARNING: SSRF protection bypass is strictly permitted for local Docker Compose bridge networking.
       # In any staging, cloud, or production deployment, A2AHUB_SECURITY_SSRF_ALLOW_PRIVATE_NETWORKS MUST be set to "false"

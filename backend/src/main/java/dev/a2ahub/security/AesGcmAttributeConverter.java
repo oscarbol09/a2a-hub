@@ -39,22 +39,15 @@ public class AesGcmAttributeConverter implements AttributeConverter<String, Stri
     @Autowired
     public void configure(SecurityProperties properties, @Autowired(required = false) org.springframework.core.env.Environment env) {
         String key = properties.getEncryptionKey();
-        boolean isDevOrTest = env != null && (env.matchesProfiles("dev") || env.matchesProfiles("test"));
-        boolean isRestrictedProfile = env != null && (
-                env.matchesProfiles("prod") ||
-                env.matchesProfiles("production") ||
-                env.matchesProfiles("staging") ||
-                env.matchesProfiles("uat")
-        );
-        boolean isUnsafeEnvironment = env != null && (isRestrictedProfile || !isDevOrTest);
-        boolean isKeyDefaultOrMissing = key == null || key.isBlank() || DEFAULT_DEV_KEY.equals(key.trim());
+        boolean isRestricted = isRestrictedEnvironment(env);
+        boolean isKeyDefaultOrMissing = key == null || key.isBlank() || isDefaultDevKey(key);
 
         if (isKeyDefaultOrMissing) {
-            if (isUnsafeEnvironment) {
-                throw new IllegalStateException("A2A_HUB_ENCRYPTION_KEY environment variable must be configured with at least 16 characters for cryptographic safety outside local dev/test environments.");
+            if (isRestricted) {
+                throw new IllegalStateException("A2A_HUB_ENCRYPTION_KEY environment variable must be configured with at least 16 characters for cryptographic safety in production environments.");
             }
             initKey(DEFAULT_DEV_KEY);
-            log.warn("Running with default master encryption key in development mode. For production, set A2A_HUB_ENCRYPTION_KEY environment variable.");
+            log.warn("Running with default master encryption key in development/default mode. For production, set A2A_HUB_ENCRYPTION_KEY environment variable.");
         } else {
             initKey(key);
             log.info("AES-GCM master encryption key configured from application environment");
@@ -65,9 +58,41 @@ public class AesGcmAttributeConverter implements AttributeConverter<String, Stri
         configure(properties, null);
     }
 
+    private static boolean isRestrictedEnvironment(org.springframework.core.env.Environment env) {
+        if (env == null) {
+            return false;
+        }
+        if (env.matchesProfiles("prod") || env.matchesProfiles("production")
+                || env.matchesProfiles("staging") || env.matchesProfiles("uat") || env.matchesProfiles("live")) {
+            return true;
+        }
+        for (String profile : env.getActiveProfiles()) {
+            String lower = profile.toLowerCase(java.util.Locale.ROOT);
+            if (lower.contains("prod") || lower.contains("stage") || lower.contains("staging")
+                    || lower.contains("uat") || lower.contains("live") || lower.contains("release")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isDefaultDevKey(String key) {
+        if (key == null) {
+            return false;
+        }
+        byte[] keyBytes = key.trim().getBytes(StandardCharsets.UTF_8);
+        byte[] defaultBytes = DEFAULT_DEV_KEY.getBytes(StandardCharsets.UTF_8);
+        return MessageDigest.isEqual(keyBytes, defaultBytes);
+    }
+
     public static void initKey(String secret) {
         if (secret == null || secret.trim().length() < 16) {
             throw new IllegalArgumentException("Master encryption key must have at least 16 characters for cryptographic safety.");
+        }
+        // Entropy enforcement: reject trivial repetitive keys (must have at least 6 distinct characters)
+        long distinctChars = secret.trim().chars().distinct().count();
+        if (distinctChars < 6) {
+            throw new IllegalArgumentException("Master encryption key has insufficient entropy (must contain at least 6 distinct characters).");
         }
         try {
             MessageDigest sha = MessageDigest.getInstance("SHA-256");
@@ -120,6 +145,11 @@ public class AesGcmAttributeConverter implements AttributeConverter<String, Stri
         try {
             String rawBase64 = dbData.substring(4);
             byte[] decoded = Base64.getDecoder().decode(rawBase64);
+
+            int minPayloadBytes = GCM_IV_LENGTH_BYTES + (GCM_TAG_LENGTH_BITS / Byte.SIZE);
+            if (decoded.length < minPayloadBytes) {
+                throw new IllegalStateException("Decryption failed: payload is truncated or invalid");
+            }
 
             ByteBuffer byteBuffer = ByteBuffer.wrap(decoded);
             byte[] iv = new byte[GCM_IV_LENGTH_BYTES];

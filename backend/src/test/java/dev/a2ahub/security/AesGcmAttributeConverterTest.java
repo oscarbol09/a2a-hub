@@ -79,14 +79,16 @@ class AesGcmAttributeConverterTest {
                     .hasMessageContaining("A2A_HUB_ENCRYPTION_KEY");
         }
 
-        // Environment with no dev or test profile (e.g. empty or default profile)
+        // Environment with no dev or test profile (e.g. empty or default profile) safely falls back
         org.springframework.mock.env.MockEnvironment defaultEnv = new org.springframework.mock.env.MockEnvironment();
         SecurityProperties defaultProps = new SecurityProperties();
         defaultProps.setEncryptionKey("a2a-hub-default-master-encryption-key-32bytes!");
 
-        org.assertj.core.api.Assertions.assertThatThrownBy(() -> converter.configure(defaultProps, defaultEnv))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("A2A_HUB_ENCRYPTION_KEY");
+        org.junit.jupiter.api.Assertions.assertDoesNotThrow(() -> converter.configure(defaultProps, defaultEnv));
+
+        SecurityProperties emptyProps = new SecurityProperties();
+        emptyProps.setEncryptionKey("");
+        org.junit.jupiter.api.Assertions.assertDoesNotThrow(() -> converter.configure(emptyProps, defaultEnv));
     }
 
     @Test
@@ -127,5 +129,43 @@ class AesGcmAttributeConverterTest {
         defaultProps.setEncryptionKey("a2a-hub-default-master-encryption-key-32bytes!");
 
         org.junit.jupiter.api.Assertions.assertDoesNotThrow(() -> converter.configure(defaultProps, null));
+    }
+
+    @Test
+    @DisplayName("Should reject low-entropy master encryption keys")
+    void shouldRejectLowEntropyKey() {
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> AesGcmAttributeConverter.initKey("1111111111111111"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("insufficient entropy");
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> AesGcmAttributeConverter.initKey("aaaaaaaaaaaaaaaa"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("insufficient entropy");
+    }
+
+    @Test
+    @DisplayName("Should fail fast on compound production profiles with default key")
+    void shouldFailFastOnCompoundProductionProfiles() {
+        for (String profile : new String[]{"prod-us-east", "k8s-production", "aws-staging", "live-traffic"}) {
+            org.springframework.mock.env.MockEnvironment env = new org.springframework.mock.env.MockEnvironment();
+            env.setActiveProfiles(profile);
+
+            SecurityProperties defaultProps = new SecurityProperties();
+            defaultProps.setEncryptionKey("a2a-hub-default-master-encryption-key-32bytes!");
+
+            org.assertj.core.api.Assertions.assertThatThrownBy(() -> converter.configure(defaultProps, env))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("A2A_HUB_ENCRYPTION_KEY");
+        }
+    }
+
+    @Test
+    @DisplayName("Should reject truncated or corrupted ciphertext payloads")
+    void shouldRejectTruncatedCiphertextPayload() {
+        // Less than 28 bytes (12 bytes IV + 16 bytes tag)
+        String truncated = "ENC:dG9vc2hvcnQ=";
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> converter.convertToEntityAttribute(truncated))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("AES-GCM decryption failed");
     }
 }
