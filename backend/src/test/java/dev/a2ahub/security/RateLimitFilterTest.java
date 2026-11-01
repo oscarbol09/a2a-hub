@@ -7,12 +7,15 @@ import jakarta.servlet.ServletException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.core.annotation.AnnotationUtils;
+import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 
 import java.io.IOException;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.*;
@@ -77,7 +80,6 @@ class RateLimitFilterTest {
         assertThat(json.get("status").asInt()).isEqualTo(429);
         assertThat(json.get("detail").asText()).contains("Rate limit");
 
-        // filterChain was only called for the first 3 allowed requests
         verify(filterChain, times(3)).doFilter(any(), any());
     }
 
@@ -111,13 +113,13 @@ class RateLimitFilterTest {
     }
 
     @Test
-    @DisplayName("Should parse client IP from X-Forwarded-For header when behind reverse proxy")
+    @DisplayName("Should parse client IP from X-Forwarded-For header when behind trusted reverse proxy")
     void shouldParseClientIpFromXForwardedFor() throws ServletException, IOException {
         RateLimitFilter filter = new RateLimitFilter(1, 60, objectMapper);
 
         MockHttpServletRequest req1 = new MockHttpServletRequest("POST", "/api/v1/tasks");
         req1.addHeader("X-Forwarded-For", "203.0.113.195, 70.41.3.18, 150.172.238.178");
-        req1.setRemoteAddr("10.0.0.1"); // Load balancer IP
+        req1.setRemoteAddr("10.0.0.1"); // Load balancer IP (site-local trusted)
         MockHttpServletResponse res1 = new MockHttpServletResponse();
         filter.doFilterInternal(req1, res1, filterChain);
         assertThat(res1.getStatus()).isEqualTo(HttpStatus.OK.value());
@@ -129,6 +131,83 @@ class RateLimitFilterTest {
         MockHttpServletResponse res2 = new MockHttpServletResponse();
         filter.doFilterInternal(req2, res2, filterChain);
         assertThat(res2.getStatus()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS.value());
+    }
+
+    @Test
+    @DisplayName("Should ignore X-Forwarded-For from untrusted public IP to prevent IP spoofing")
+    void shouldIgnoreXForwardedForFromUntrustedIp() throws ServletException, IOException {
+        RateLimitFilter filter = new RateLimitFilter(1, 60, objectMapper);
+
+        // Attacker with public IP 198.51.100.25 attempts to bypass rate limits by randomizing X-Forwarded-For
+        MockHttpServletRequest req1 = new MockHttpServletRequest("POST", "/api/v1/tasks");
+        req1.setRemoteAddr("198.51.100.25");
+        req1.addHeader("X-Forwarded-For", "1.1.1.1");
+        MockHttpServletResponse res1 = new MockHttpServletResponse();
+        filter.doFilterInternal(req1, res1, filterChain);
+        assertThat(res1.getStatus()).isEqualTo(HttpStatus.OK.value());
+
+        // Second request with different spoofed X-Forwarded-For from same public IP must be blocked
+        MockHttpServletRequest req2 = new MockHttpServletRequest("POST", "/api/v1/tasks");
+        req2.setRemoteAddr("198.51.100.25");
+        req2.addHeader("X-Forwarded-For", "2.2.2.2");
+        MockHttpServletResponse res2 = new MockHttpServletResponse();
+        filter.doFilterInternal(req2, res2, filterChain);
+        assertThat(res2.getStatus()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS.value());
+    }
+
+    @Test
+    @DisplayName("Should trust configured custom reverse proxy CIDRs")
+    void shouldTrustConfiguredProxyCidr() throws ServletException, IOException {
+        SecurityProperties props = new SecurityProperties();
+        props.getRateLimit().setTrustedProxies(List.of("198.51.100.0/24"));
+
+        RateLimitFilter filter = new RateLimitFilter(1, 60, 10_000, objectMapper, props);
+
+        MockHttpServletRequest req1 = new MockHttpServletRequest("POST", "/api/v1/tasks");
+        req1.setRemoteAddr("198.51.100.55"); // In configured trusted CIDR
+        req1.addHeader("X-Forwarded-For", "203.0.113.10");
+        MockHttpServletResponse res1 = new MockHttpServletResponse();
+        filter.doFilterInternal(req1, res1, filterChain);
+        assertThat(res1.getStatus()).isEqualTo(HttpStatus.OK.value());
+
+        // Second request for client 203.0.113.10 through proxy should be rate limited
+        MockHttpServletRequest req2 = new MockHttpServletRequest("POST", "/api/v1/tasks");
+        req2.setRemoteAddr("198.51.100.55");
+        req2.addHeader("X-Forwarded-For", "203.0.113.10");
+        MockHttpServletResponse res2 = new MockHttpServletResponse();
+        filter.doFilterInternal(req2, res2, filterChain);
+        assertThat(res2.getStatus()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS.value());
+    }
+
+    @Test
+    @DisplayName("Should bound bucket cache size to prevent memory exhaustion (DoS)")
+    void shouldBoundBucketCacheSize() throws ServletException, IOException {
+        int maxCapacity = 50;
+        RateLimitFilter filter = new RateLimitFilter(10, 60, maxCapacity, objectMapper, null);
+
+        // Flood with 200 distinct private IPs
+        for (int i = 0; i < 200; i++) {
+            MockHttpServletRequest req = new MockHttpServletRequest("GET", "/api/v1/agents");
+            req.setRemoteAddr("10.0." + (i / 256) + "." + (i % 256));
+            MockHttpServletResponse res = new MockHttpServletResponse();
+            filter.doFilterInternal(req, res, filterChain);
+        }
+
+        // Cache size must never exceed configured maximum bound
+        assertThat(filter.getBucketCount()).isLessThanOrEqualTo(maxCapacity);
+    }
+
+    @Test
+    @DisplayName("ApiKeyAuthFilter should have higher precedence than RateLimitFilter (@Order(10) < @Order(20))")
+    void shouldHaveCorrectFilterOrderPrecedence() {
+        Order apiKeyOrder = AnnotationUtils.findAnnotation(ApiKeyAuthFilter.class, Order.class);
+        Order rateLimitOrder = AnnotationUtils.findAnnotation(RateLimitFilter.class, Order.class);
+
+        assertThat(apiKeyOrder).isNotNull();
+        assertThat(rateLimitOrder).isNotNull();
+        assertThat(apiKeyOrder.value()).isEqualTo(10);
+        assertThat(rateLimitOrder.value()).isEqualTo(20);
+        assertThat(apiKeyOrder.value()).isLessThan(rateLimitOrder.value());
     }
 
     @Test
