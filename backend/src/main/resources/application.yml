@@ -46,6 +46,11 @@ a2ahub:
     api-key: ${A2A_HUB_API_KEY:}
     encryption-key: ${A2A_HUB_ENCRYPTION_KEY:}
     require-auth-for-reads: ${A2A_HUB_REQUIRE_AUTH_READS:false}
+    rate-limit:
+      capacity: ${A2A_HUB_RATE_LIMIT_CAPACITY:120}
+      duration-seconds: ${A2A_HUB_RATE_LIMIT_DURATION:60}
+      max-buckets: ${A2A_HUB_RATE_LIMIT_MAX_BUCKETS:10000}
+      trusted-proxies: ${A2A_HUB_TRUSTED_PROXIES:}
     ssrf:
       allow-private-networks: ${A2AHUB_SECURITY_SSRF_ALLOW_PRIVATE_NETWORKS:${A2A_HUB_ALLOW_PRIVATE_NETWORKS:false}}
   gemini:

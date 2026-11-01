@@ -5,6 +5,9 @@ import org.springframework.stereotype.Component;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.util.ArrayList;
+import java.util.List;
+
 @Component
 @ConfigurationProperties(prefix = "a2ahub.security")
 @Getter
@@ -30,7 +33,7 @@ public class SecurityProperties {
     /**
      * Allowed CORS origins for browser web clients.
      */
-    private java.util.List<String> allowedOrigins = java.util.List.of(
+    private List<String> allowedOrigins = List.of(
             "http://localhost:5173",
             "http://127.0.0.1:5173",
             "http://localhost:3000",
@@ -38,9 +41,24 @@ public class SecurityProperties {
     );
 
     /**
+     * Rate limiting and reverse proxy defense properties.
+     */
+    private RateLimit rateLimit = new RateLimit();
+
+    /**
      * SSRF defense settings.
      */
     private Ssrf ssrf = new Ssrf();
+
+    @Getter
+    @Setter
+    public static class RateLimit {
+        private boolean enabled = true;
+        private long capacity = 120;
+        private long durationSeconds = 60;
+        private int maxBuckets = 10_000;
+        private List<String> trustedProxies = new ArrayList<>();
+    }
 
     @Getter
     @Setter
