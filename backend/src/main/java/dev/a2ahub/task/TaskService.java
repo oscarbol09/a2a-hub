@@ -123,6 +123,7 @@ public class TaskService {
                     //NEW: mark the task as notify WebSocket clients
                     TaskDto workingDto = persistenceService.updateTaskResult(submittedTask.id(), TaskState.WORKING, null, null);
                     eventPublisher.publishTaskUpdated(workingDto);
+                    
                     log.info("Starting background proxy execution for task {}", submittedTask.id());
                     executeDownstreamProxy(submittedTask.id(), submittedTask.contextId(), agentName, agentUrl, submitRequest.payload(), correlationId, traceparent, authType, authToken);
                     log.info("Completed background proxy execution for task {}", submittedTask.id());
