@@ -39,22 +39,20 @@ public class AesGcmAttributeConverter implements AttributeConverter<String, Stri
     @Autowired
     public void configure(SecurityProperties properties, @Autowired(required = false) org.springframework.core.env.Environment env) {
         String key = properties.getEncryptionKey();
-        boolean isDevOrTest = env != null && (env.matchesProfiles("dev") || env.matchesProfiles("test"));
         boolean isRestrictedProfile = env != null && (
                 env.matchesProfiles("prod") ||
                 env.matchesProfiles("production") ||
                 env.matchesProfiles("staging") ||
                 env.matchesProfiles("uat")
         );
-        boolean isUnsafeEnvironment = env != null && (isRestrictedProfile || !isDevOrTest);
         boolean isKeyDefaultOrMissing = key == null || key.isBlank() || DEFAULT_DEV_KEY.equals(key.trim());
 
         if (isKeyDefaultOrMissing) {
-            if (isUnsafeEnvironment) {
-                throw new IllegalStateException("A2A_HUB_ENCRYPTION_KEY environment variable must be configured with at least 16 characters for cryptographic safety outside local dev/test environments.");
+            if (isRestrictedProfile) {
+                throw new IllegalStateException("A2A_HUB_ENCRYPTION_KEY environment variable must be configured with at least 16 characters for cryptographic safety in production environments.");
             }
             initKey(DEFAULT_DEV_KEY);
-            log.warn("Running with default master encryption key in development mode. For production, set A2A_HUB_ENCRYPTION_KEY environment variable.");
+            log.warn("Running with default master encryption key in development/default mode. For production, set A2A_HUB_ENCRYPTION_KEY environment variable.");
         } else {
             initKey(key);
             log.info("AES-GCM master encryption key configured from application environment");

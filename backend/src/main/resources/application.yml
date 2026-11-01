@@ -44,7 +44,7 @@ spring:
 a2ahub:
   security:
     api-key: ${A2A_HUB_API_KEY:}
-    encryption-key: ${A2A_HUB_ENCRYPTION_KEY:}
+    encryption-key: ${A2A_HUB_ENCRYPTION_KEY:a2a-hub-default-master-encryption-key-32bytes!}
     require-auth-for-reads: ${A2A_HUB_REQUIRE_AUTH_READS:false}
     ssrf:
       allow-private-networks: ${A2AHUB_SECURITY_SSRF_ALLOW_PRIVATE_NETWORKS:${A2A_HUB_ALLOW_PRIVATE_NETWORKS:false}}

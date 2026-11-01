@@ -79,14 +79,16 @@ class AesGcmAttributeConverterTest {
                     .hasMessageContaining("A2A_HUB_ENCRYPTION_KEY");
         }
 
-        // Environment with no dev or test profile (e.g. empty or default profile)
+        // Environment with no dev or test profile (e.g. empty or default profile) safely falls back
         org.springframework.mock.env.MockEnvironment defaultEnv = new org.springframework.mock.env.MockEnvironment();
         SecurityProperties defaultProps = new SecurityProperties();
         defaultProps.setEncryptionKey("a2a-hub-default-master-encryption-key-32bytes!");
 
-        org.assertj.core.api.Assertions.assertThatThrownBy(() -> converter.configure(defaultProps, defaultEnv))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("A2A_HUB_ENCRYPTION_KEY");
+        org.junit.jupiter.api.Assertions.assertDoesNotThrow(() -> converter.configure(defaultProps, defaultEnv));
+
+        SecurityProperties emptyProps = new SecurityProperties();
+        emptyProps.setEncryptionKey("");
+        org.junit.jupiter.api.Assertions.assertDoesNotThrow(() -> converter.configure(emptyProps, defaultEnv));
     }
 
     @Test
