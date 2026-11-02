@@ -129,6 +129,18 @@ jobs:
           cache-from: type=gha,scope=calculator-agent
           cache-to: type=gha,mode=max,scope=calculator-agent
 
+      - name: Build and Push Frontend Container Image
+        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5.4.0
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ env.REPO_LOWER }}/frontend:${{ github.ref_name }}
+            ghcr.io/${{ env.REPO_LOWER }}/frontend:latest
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
+
       - name: Create GitHub Release and Attach Binaries
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
