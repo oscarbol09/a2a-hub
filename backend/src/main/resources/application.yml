@@ -44,7 +44,7 @@ spring:
 a2ahub:
   security:
     api-key: ${A2A_HUB_API_KEY:}
-    encryption-key: ${A2A_HUB_ENCRYPTION_KEY:}
+    encryption-key: ${A2A_HUB_ENCRYPTION_KEY:a2a-hub-default-master-encryption-key-32bytes!}
     require-auth-for-reads: ${A2A_HUB_REQUIRE_AUTH_READS:false}
     allowed-origins: ${A2A_HUB_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173,http://127.0.0.1:3000}
     ssrf:
