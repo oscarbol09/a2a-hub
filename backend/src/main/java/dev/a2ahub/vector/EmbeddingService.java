@@ -6,6 +6,7 @@ import dev.langchain4j.model.embedding.EmbeddingModel;
 import dev.langchain4j.model.googleai.GoogleAiEmbeddingModel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -27,6 +28,7 @@ public class EmbeddingService {
         this(geminiApiKey, "text-embedding-004");
     }
 
+    @Autowired
     public EmbeddingService(
             @Value("${a2ahub.gemini.api-key:${GEMINI_API_KEY:}}") String geminiApiKey,
             @Value("${a2ahub.gemini.embedding-model:${GEMINI_EMBEDDING_MODEL:text-embedding-004}}") String embeddingModelName) {
