@@ -149,6 +149,7 @@ Open `http://localhost:5173` to access the registry, live topology monitor, and 
 | `A2A_HUB_API_KEY` | `a2ahub.security.api-key` | *(empty)* | If set, enforces `X-API-Key` or `Authorization: Bearer` on mutating endpoints. If empty, local open mode is enabled. |
 | `A2A_HUB_ENCRYPTION_KEY` | `a2ahub.security.encryption-key` | *(dev fallback)* | Master secret for AES-256-GCM token encryption. Must be at least 16 characters in production. |
 | `A2A_HUB_REQUIRE_AUTH_READS` | `a2ahub.security.require-auth-for-reads` | `false` | If `true`, requires API key authentication for read-only GET endpoints. |
+| `A2A_HUB_ALLOWED_ORIGINS` | `a2ahub.security.allowed-origins` | `http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173,http://127.0.0.1:3000` | Comma-separated list of allowed CORS origins for browser clients. Configure this variable when deploying the Hub on custom domains, intranet hosts, or staging environments. |
 | `A2AHUB_SECURITY_SSRF_ALLOW_PRIVATE_NETWORKS` / `A2A_HUB_ALLOW_PRIVATE_NETWORKS` | `a2ahub.security.ssrf.allow-private-networks` | `false` | If `false`, blocks loopback, private RFC 1918, link-local, and cloud metadata addresses. Set `true` only for containerized test networks. |
 | `GEMINI_API_KEY` | `a2ahub.gemini.api-key` | *(empty)* | Google Gemini API key for AI orchestration triage. If empty, orchestrator falls back to vector similarity. |
 | `A2A_HUB_HEALTH_INTERVAL_MS` | `a2ahub.health.interval-ms` | `30000` | Probing frequency in milliseconds across all registered agents. |
