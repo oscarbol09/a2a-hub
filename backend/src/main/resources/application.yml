@@ -47,6 +47,7 @@ a2ahub:
     encryption-key: ${A2A_HUB_ENCRYPTION_KEY:}
     require-auth-for-reads: ${A2A_HUB_REQUIRE_AUTH_READS:false}
     ssrf:
+    allowed-origins: ${A2A_HUB_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173,http://127.0.0.1:3000}
       allow-private-networks: ${A2AHUB_SECURITY_SSRF_ALLOW_PRIVATE_NETWORKS:${A2A_HUB_ALLOW_PRIVATE_NETWORKS:false}}
   gemini:
     api-key: ${GEMINI_API_KEY:}
