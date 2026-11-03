@@ -79,6 +79,37 @@ class TaskServiceTest {
     }
 
     @Test
+    void shouldReadHistoricalAttributionWithoutAnAgentAssociation() {
+        UUID originalAgentId = UUID.randomUUID();
+        TaskEntity task = new TaskEntity();
+        task.setOriginalAgentId(originalAgentId);
+        task.setOriginalAgentName("OriginalAgent");
+        task.setState(TaskState.COMPLETED);
+
+        when(taskRepository.findById(task.getId())).thenReturn(Optional.of(task));
+        TaskService.TaskDto result = taskService.findById(task.getId());
+
+        assertThat(result.agentId()).isEqualTo(originalAgentId);
+        assertThat(result.agentName()).isEqualTo("OriginalAgent");
+        assertThat(result.state()).isEqualTo("COMPLETED");
+    }
+
+    @Test
+    void shouldNotDispatchWhenAgentDisappearsDuringAdmission() {
+        Agent agent = new Agent();
+        agent.setUrl("https://worker.agent.io");
+        when(agentRepository.findById(agent.getId())).thenReturn(Optional.of(agent));
+        when(persistenceService.createSubmittedTask(eq(agent), any(), any()))
+                .thenThrow(new AgentNotFoundException("Agent disappeared during admission"));
+
+        assertThatThrownBy(() -> taskService.submitTask(new TaskService.SubmitTaskRequest(
+                agent.getId(), "ctx", Map.of("query", "test"), true)))
+                .isInstanceOf(AgentNotFoundException.class);
+
+        verify(restClient, never()).post();
+    }
+
+    @Test
     @DisplayName("Should reject task submission when target agent is OFFLINE")
     void shouldRejectTaskWhenAgentOffline() {
         UUID agentId = UUID.randomUUID();

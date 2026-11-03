@@ -3,6 +3,7 @@ package dev.a2ahub.agent;
 import dev.a2ahub.events.AgentEventPublisher;
 import dev.a2ahub.security.SsrfValidator;
 import dev.a2ahub.task.TaskRepository;
+import dev.a2ahub.task.TaskState;
 import dev.a2ahub.vector.EmbeddingService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -147,8 +148,13 @@ public class AgentRegistryService {
 
     @Transactional
     public void unregister(UUID id) {
+        // Serialize task admission and unregistration on the same parent row.
+        // An absent agent remains an idempotent delete, including the existing event.
+        agentRepository.findByIdForUpdate(id);
+        if (taskRepository.existsByAgent_IdAndStateIn(id, List.of(TaskState.SUBMITTED, TaskState.WORKING))) {
+            throw new IllegalStateException("Cannot unregister agent " + id + ": active tasks exist");
+        }
         agentSkillRepository.deleteByAgentId(id);
-        taskRepository.deleteByAgentId(id);
         agentRepository.deleteById(id);
         eventPublisher.publishAgentStatusChanged(id, "UNREGISTERED");
     }

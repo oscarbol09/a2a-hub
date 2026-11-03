@@ -2,35 +2,32 @@ package dev.a2ahub.task;
 
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Slice;
-import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 
 public interface TaskRepository extends JpaRepository<TaskEntity, UUID> {
 
-    @EntityGraph(attributePaths = {"agent"})
-    List<TaskEntity> findByAgentIdOrderByCreatedAtDesc(UUID agentId);
-
-    @Override
-    @EntityGraph(attributePaths = {"agent"})
-    Optional<TaskEntity> findById(UUID id);
+    @Query("SELECT t FROM TaskEntity t WHERE t.originalAgentId = :agentId ORDER BY t.createdAt DESC")
+    List<TaskEntity> findByAgentIdOrderByCreatedAtDesc(@Param("agentId") UUID agentId);
 
     List<TaskEntity> findByState(TaskState state);
 
+    boolean existsByAgent_IdAndStateIn(UUID agentId, Collection<TaskState> states);
+
     /**
-     * High-speed Keyset/Cursor Pagination with DTO projection.
-     * O(1) Index seek on monotonic UUIDv7. Completely eliminates TOAST table reads.
+     * Cursor pagination over permanent attribution, including unregistered agents.
+     * The projection omits request and response payloads.
      */
     @Query("""
         SELECT new dev.a2ahub.task.TaskSummaryDto(
             t.id,
-            a.id,
-            a.name,
+            t.originalAgentId,
+            t.originalAgentName,
             t.contextId,
             t.state,
             t.errorDetail,
@@ -38,8 +35,7 @@ public interface TaskRepository extends JpaRepository<TaskEntity, UUID> {
             t.updatedAt
         )
         FROM TaskEntity t
-        JOIN t.agent a
-        WHERE a.id = :agentId
+        WHERE t.originalAgentId = :agentId
           AND (:cursorId IS NULL OR t.id < :cursorId)
         ORDER BY t.id DESC
     """)

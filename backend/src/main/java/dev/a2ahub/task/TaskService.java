@@ -238,8 +238,8 @@ public class TaskService {
     public TaskDto toDto(TaskEntity entity) {
         return new TaskDto(
                 entity.getId(),
-                entity.getAgent().getId(),
-                entity.getAgent().getName(),
+                entity.getOriginalAgentId(),
+                entity.getOriginalAgentName(),
                 entity.getContextId(),
                 entity.getState().name(),
                 entity.getRequest(),

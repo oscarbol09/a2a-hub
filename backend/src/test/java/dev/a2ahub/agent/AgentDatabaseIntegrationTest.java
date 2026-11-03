@@ -158,6 +158,8 @@ class AgentDatabaseIntegrationTest {
         // Persist Task
         TaskEntity task = new TaskEntity();
         task.setAgent(savedAgent);
+        task.setOriginalAgentId(savedAgent.getId());
+        task.setOriginalAgentName(savedAgent.getName());
         task.setContextId("integration-ctx-1");
         task.setState(TaskState.WORKING);
         task.setRequest(Map.of("prompt", "analyze dataset"));
@@ -210,6 +212,8 @@ class AgentDatabaseIntegrationTest {
 
         TaskEntity t1 = new TaskEntity();
         t1.setAgent(savedAgent);
+        t1.setOriginalAgentId(savedAgent.getId());
+        t1.setOriginalAgentName(savedAgent.getName());
         t1.setContextId("ctx-1");
         t1.setState(TaskState.COMPLETED);
         t1.setRequest(Map.of("step", 1));
@@ -219,6 +223,8 @@ class AgentDatabaseIntegrationTest {
 
         TaskEntity t2 = new TaskEntity();
         t2.setAgent(savedAgent);
+        t2.setOriginalAgentId(savedAgent.getId());
+        t2.setOriginalAgentName(savedAgent.getName());
         t2.setContextId("ctx-2");
         t2.setState(TaskState.COMPLETED);
         t2.setRequest(Map.of("step", 2));
@@ -228,6 +234,8 @@ class AgentDatabaseIntegrationTest {
 
         TaskEntity t3 = new TaskEntity();
         t3.setAgent(savedAgent);
+        t3.setOriginalAgentId(savedAgent.getId());
+        t3.setOriginalAgentName(savedAgent.getName());
         t3.setContextId("ctx-3");
         t3.setState(TaskState.COMPLETED);
         t3.setRequest(Map.of("step", 3));

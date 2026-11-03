@@ -1,6 +1,8 @@
 package dev.a2ahub.task;
 
 import dev.a2ahub.agent.Agent;
+import dev.a2ahub.agent.AgentNotFoundException;
+import dev.a2ahub.agent.AgentRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,9 +21,11 @@ import java.util.UUID;
 public class TaskPersistenceService {
 
     private final TaskRepository taskRepository;
+    private final AgentRepository agentRepository;
 
-    public TaskPersistenceService(TaskRepository taskRepository) {
+    public TaskPersistenceService(TaskRepository taskRepository, AgentRepository agentRepository) {
         this.taskRepository = taskRepository;
+        this.agentRepository = agentRepository;
     }
 
     /**
@@ -30,16 +34,24 @@ public class TaskPersistenceService {
     @SuppressWarnings("unchecked")
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public TaskService.TaskDto createSubmittedTask(Agent agent, String contextId, Map<String, ?> payload) {
+        // The caller's detached agent may have been unregistered since its lookup.
+        Agent lockedAgent = agentRepository.findByIdForUpdate(agent.getId())
+                .orElseThrow(() -> new AgentNotFoundException("Agent not found with ID: " + agent.getId()));
+        if ("OFFLINE".equalsIgnoreCase(lockedAgent.getStatus())) {
+            throw new IllegalStateException("Target agent " + lockedAgent.getName() + " is currently OFFLINE");
+        }
         TaskEntity task = new TaskEntity();
-        task.setAgent(agent);
+        task.setAgent(lockedAgent);
+        task.setOriginalAgentId(lockedAgent.getId());
+        task.setOriginalAgentName(lockedAgent.getName());
         task.setContextId(contextId != null ? contextId : UUID.randomUUID().toString());
         task.setRequest((Map<String, Object>) (Map<?, ?>) payload);
         task.setState(TaskState.SUBMITTED);
         TaskEntity saved = taskRepository.save(task);
         return new TaskService.TaskDto(
                 saved.getId(),
-                agent.getId(),
-                agent.getName(),
+                saved.getOriginalAgentId(),
+                saved.getOriginalAgentName(),
                 saved.getContextId(),
                 saved.getState().name(),
                 saved.getRequest(),
@@ -64,8 +76,8 @@ public class TaskPersistenceService {
         TaskEntity saved = taskRepository.save(task);
         return new TaskService.TaskDto(
                 saved.getId(),
-                saved.getAgent().getId(),
-                saved.getAgent().getName(),
+                saved.getOriginalAgentId(),
+                saved.getOriginalAgentName(),
                 saved.getContextId(),
                 saved.getState().name(),
                 saved.getRequest(),
