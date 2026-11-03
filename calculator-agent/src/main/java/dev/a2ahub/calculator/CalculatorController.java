@@ -138,7 +138,7 @@ public class CalculatorController {
         try {
             Response<AiMessage> response = chatModel.generate(
                     SystemMessage.from(SYSTEM_PROMPT),
-                    UserMessage.from("<user_query>\n" + query + "\n</user_query>")
+                    UserMessage.from("<user_query>\n" + escapeXml(query) + "\n</user_query>")
             );
             String result = (response != null && response.content() != null) ? response.content().text() : "";
             return TaskResponse.ok(result, contextId);
@@ -146,5 +146,10 @@ public class CalculatorController {
             log.error("Error executing calculation through chatModel", ex);
             return TaskResponse.error("Failed to process calculation: " + ex.getMessage(), contextId);
         }
+    }
+
+    private static String escapeXml(String input) {
+        return input.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                .replace("\"", "&quot;").replace("'", "&apos;");
     }
 }
