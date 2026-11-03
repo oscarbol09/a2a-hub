@@ -186,9 +186,7 @@ public class TaskService {
 
             if (responseBody != null && "error".equalsIgnoreCase(String.valueOf(responseBody.get("status")))) {
                 finalState = TaskState.FAILED;
-                errorMessage = responseBody.get("result") != null
-                        ? String.valueOf(responseBody.get("result"))
-                        : String.valueOf(responseBody.getOrDefault("error", "Downstream agent returned status: error"));
+                errorMessage = downstreamErrorMessage(responseBody);
             } else {
                 finalState = TaskState.COMPLETED;
                 if (responseBody == null) {
@@ -232,6 +230,16 @@ public class TaskService {
         return taskRepository.findByAgentIdOrderByCreatedAtDesc(agentId).stream()
                 .map(this::toDto)
                 .toList();
+    }
+
+    private String downstreamErrorMessage(Map<String, Object> responseBody) {
+        for (String key : List.of("result", "error", "message")) {
+            Object detail = responseBody.get(key);
+            if (detail != null) {
+                return String.valueOf(detail);
+            }
+        }
+        return "Downstream agent returned status: error";
     }
 
     private String generateW3cTraceparent() {
