@@ -2,6 +2,7 @@ package dev.a2ahub.agent;
 
 import dev.a2ahub.events.AgentEventPublisher;
 import dev.a2ahub.security.SsrfValidator;
+import dev.a2ahub.task.TaskState;
 import dev.a2ahub.vector.EmbeddingService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -174,18 +175,48 @@ class AgentRegistryServiceTest {
     }
 
     @Test
-    @DisplayName("Should unregister agent by ID, cleanup skills, tasks, and broadcast event")
+    @DisplayName("Should unregister agent without deleting historical tasks")
     void shouldUnregisterAgent() {
         UUID id = UUID.randomUUID();
         doNothing().when(agentSkillRepository).deleteByAgentId(id);
-        doNothing().when(taskRepository).deleteByAgentId(id);
         doNothing().when(agentRepository).deleteById(id);
 
         agentRegistryService.unregister(id);
 
-        verify(agentSkillRepository).deleteByAgentId(id);
-        verify(taskRepository).deleteByAgentId(id);
+        var order = inOrder(agentRepository, taskRepository, agentSkillRepository);
+        order.verify(agentRepository).findByIdForUpdate(id);
+        order.verify(taskRepository).existsByAgent_IdAndStateIn(id, List.of(TaskState.SUBMITTED, TaskState.WORKING));
+        order.verify(agentSkillRepository).deleteByAgentId(id);
+        order.verify(agentRepository).deleteById(id);
+        verify(taskRepository, never()).deleteByAgentId(id);
+        verify(eventPublisher).publishAgentStatusChanged(id, "UNREGISTERED");
+    }
+
+    @Test
+    void shouldRejectUnregistrationBeforeAnyCleanupWhenActiveTasksExist() {
+        UUID id = UUID.randomUUID();
+        when(taskRepository.existsByAgent_IdAndStateIn(id, List.of(TaskState.SUBMITTED, TaskState.WORKING)))
+                .thenReturn(true);
+
+        assertThatThrownBy(() -> agentRegistryService.unregister(id))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("active tasks");
+
+        verify(agentRepository).findByIdForUpdate(id);
+        verify(agentRepository, never()).deleteById(any());
+        verify(taskRepository, never()).deleteByAgentId(any());
+        verifyNoInteractions(agentSkillRepository, eventPublisher);
+    }
+
+    @Test
+    void shouldKeepMissingAgentDeletionIdempotentAndPublishExistingEvent() {
+        UUID id = UUID.randomUUID();
+        when(agentRepository.findByIdForUpdate(id)).thenReturn(Optional.empty());
+
+        agentRegistryService.unregister(id);
+
         verify(agentRepository).deleteById(id);
+        verify(taskRepository, never()).deleteByAgentId(any());
         verify(eventPublisher).publishAgentStatusChanged(id, "UNREGISTERED");
     }
 }

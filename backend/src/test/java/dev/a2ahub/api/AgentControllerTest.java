@@ -142,4 +142,18 @@ class AgentControllerTest {
 
         verify(agentRegistryService).unregister(id);
     }
+
+    @Test
+    void shouldReturn409WhenAgentHasActiveTasks() throws Exception {
+        UUID id = UUID.randomUUID();
+        String message = "Cannot unregister agent " + id + ": active tasks exist";
+        doThrow(new IllegalStateException(message)).when(agentRegistryService).unregister(id);
+
+        mockMvc.perform(delete("/api/v1/agents/{id}", id))
+                .andExpect(status().isConflict())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.status").value(409))
+                .andExpect(jsonPath("$.detail").value(message))
+                .andExpect(jsonPath("$.message").value(message));
+    }
 }

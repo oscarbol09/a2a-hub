@@ -1,6 +1,8 @@
 package dev.a2ahub.task;
 
 import dev.a2ahub.agent.Agent;
+import dev.a2ahub.agent.AgentNotFoundException;
+import dev.a2ahub.agent.AgentRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -16,6 +18,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -26,6 +29,9 @@ class TaskPersistenceServiceTest {
     @Mock
     private TaskRepository taskRepository;
 
+    @Mock
+    private AgentRepository agentRepository;
+
     @InjectMocks
     private TaskPersistenceService persistenceService;
 
@@ -35,6 +41,10 @@ class TaskPersistenceServiceTest {
         Agent agent = new Agent();
         agent.setId(UUID.randomUUID());
         agent.setName("AlphaAgent");
+        Agent lockedAgent = new Agent();
+        lockedAgent.setId(agent.getId());
+        lockedAgent.setName("AuthoritativeAgent");
+        when(agentRepository.findByIdForUpdate(agent.getId())).thenReturn(Optional.of(lockedAgent));
 
         Map<String, Object> payload = Map.of("input", "test prompt");
 
@@ -50,7 +60,7 @@ class TaskPersistenceServiceTest {
 
         assertThat(dto).isNotNull();
         assertThat(dto.agentId()).isEqualTo(agent.getId());
-        assertThat(dto.agentName()).isEqualTo("AlphaAgent");
+        assertThat(dto.agentName()).isEqualTo("AuthoritativeAgent");
         assertThat(dto.contextId()).isEqualTo("ctx-custom-123");
         assertThat(dto.state()).isEqualTo(TaskState.SUBMITTED.name());
         assertThat(dto.request()).isEqualTo(payload);
@@ -60,7 +70,9 @@ class TaskPersistenceServiceTest {
         ArgumentCaptor<TaskEntity> captor = ArgumentCaptor.forClass(TaskEntity.class);
         verify(taskRepository).save(captor.capture());
         TaskEntity captured = captor.getValue();
-        assertThat(captured.getAgent()).isEqualTo(agent);
+        assertThat(captured.getAgent()).isEqualTo(lockedAgent);
+        assertThat(captured.getOriginalAgentId()).isEqualTo(agent.getId());
+        assertThat(captured.getOriginalAgentName()).isEqualTo("AuthoritativeAgent");
         assertThat(captured.getContextId()).isEqualTo("ctx-custom-123");
         assertThat(captured.getState()).isEqualTo(TaskState.SUBMITTED);
         assertThat(captured.getRequest()).isEqualTo(payload);
@@ -72,6 +84,7 @@ class TaskPersistenceServiceTest {
         Agent agent = new Agent();
         agent.setId(UUID.randomUUID());
         agent.setName("BetaAgent");
+        when(agentRepository.findByIdForUpdate(agent.getId())).thenReturn(Optional.of(agent));
 
         when(taskRepository.save(any(TaskEntity.class))).thenAnswer(invocation -> {
             TaskEntity entity = invocation.getArgument(0);
@@ -101,6 +114,8 @@ class TaskPersistenceServiceTest {
         TaskEntity task = new TaskEntity();
         task.setId(taskId);
         task.setAgent(agent);
+        task.setOriginalAgentId(agent.getId());
+        task.setOriginalAgentName(agent.getName());
         task.setContextId("ctx-comp-1");
         task.setState(TaskState.SUBMITTED);
         task.setRequest(Map.of("data", 123));
@@ -115,6 +130,8 @@ class TaskPersistenceServiceTest {
         assertThat(updatedDto.state()).isEqualTo(TaskState.COMPLETED.name());
         assertThat(updatedDto.response()).isEqualTo(response);
         assertThat(updatedDto.errorDetail()).isNull();
+        assertThat(updatedDto.agentId()).isEqualTo(agent.getId());
+        assertThat(updatedDto.agentName()).isEqualTo("WorkerAgent");
         assertThat(task.getState()).isEqualTo(TaskState.COMPLETED);
         assertThat(task.getResponse()).isEqualTo(response);
     }
@@ -129,7 +146,9 @@ class TaskPersistenceServiceTest {
 
         TaskEntity task = new TaskEntity();
         task.setId(taskId);
-        task.setAgent(agent);
+        // Historical task with its live agent relationship already detached.
+        task.setOriginalAgentId(agent.getId());
+        task.setOriginalAgentName(agent.getName());
         task.setContextId("ctx-fail-1");
         task.setState(TaskState.SUBMITTED);
         task.setRequest(Map.of("data", 456));
@@ -141,6 +160,8 @@ class TaskPersistenceServiceTest {
 
         assertThat(updatedDto.id()).isEqualTo(taskId);
         assertThat(updatedDto.state()).isEqualTo(TaskState.FAILED.name());
+        assertThat(updatedDto.agentId()).isEqualTo(agent.getId());
+        assertThat(updatedDto.agentName()).isEqualTo("WorkerAgent");
         assertThat(updatedDto.response()).isNull();
         assertThat(updatedDto.errorDetail()).isEqualTo("Downstream gateway timeout");
         assertThat(task.getState()).isEqualTo(TaskState.FAILED);
@@ -156,6 +177,32 @@ class TaskPersistenceServiceTest {
         assertThatThrownBy(() -> persistenceService.updateTaskResult(taskId, TaskState.COMPLETED, Map.of(), null))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("Task not found with ID: " + taskId);
+    }
+
+    @Test
+    void shouldRejectTaskWhenAgentDisappearedBeforeAdmission() {
+        Agent agent = new Agent();
+        when(agentRepository.findByIdForUpdate(agent.getId())).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> persistenceService.createSubmittedTask(agent, "ctx", Map.of("query", "test")))
+                .isInstanceOf(AgentNotFoundException.class);
+
+        verify(taskRepository, never()).save(any());
+    }
+
+    @Test
+    void shouldRecheckOfflineStatusUnderAdmissionLock() {
+        Agent agent = new Agent();
+        Agent lockedAgent = new Agent();
+        lockedAgent.setId(agent.getId());
+        lockedAgent.setStatus("OFFLINE");
+        when(agentRepository.findByIdForUpdate(agent.getId())).thenReturn(Optional.of(lockedAgent));
+
+        assertThatThrownBy(() -> persistenceService.createSubmittedTask(agent, "ctx", Map.of("query", "test")))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("OFFLINE");
+
+        verify(taskRepository, never()).save(any());
     }
 
     @Test

@@ -35,8 +35,14 @@ public class TaskEntity {
     }
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "agent_id", nullable = false)
+    @JoinColumn(name = "agent_id")
     private Agent agent;
+
+    @Column(name = "original_agent_id", nullable = false, updatable = false)
+    private UUID originalAgentId;
+
+    @Column(name = "original_agent_name", nullable = false, updatable = false)
+    private String originalAgentName;
 
     @Column(name = "context_id")
     private String contextId;
