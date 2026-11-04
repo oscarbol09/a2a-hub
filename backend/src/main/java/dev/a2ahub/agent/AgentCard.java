@@ -3,6 +3,7 @@ package dev.a2ahub.agent;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 /**
  * Standard A2A v1.0 Agent Card representation.
@@ -18,6 +19,8 @@ public record AgentCard(
     Map<String, Object> capabilities,
     List<Object> supportedInterfaces
 ) {
+    private static final Pattern URI_SCHEME = Pattern.compile("^[A-Za-z][A-Za-z0-9+.-]*:");
+
     public AgentCard {
         skills = skills != null ? skills : List.of();
         capabilities = capabilities != null ? capabilities : Map.of();
@@ -40,7 +43,12 @@ public record AgentCard(
             if (item instanceof AgentInterface ai) {
                 result.add(ai);
             } else if (item instanceof String s) {
-                result.add(new AgentInterface(null, s, "1.0"));
+                String value = s.trim();
+                // Recognize schemes and scheme-relative URLs before validation so invalid declarations
+                // cannot silently become legacy protocol labels and trigger the /tasks fallback.
+                result.add(URI_SCHEME.matcher(value).find() || value.startsWith("//")
+                        ? new AgentInterface(value, "HTTP+JSON", "1.0")
+                        : new AgentInterface(null, s, "1.0"));
             } else if (item instanceof Map<?, ?> m) {
                 String u = m.get("url") != null ? m.get("url").toString() : null;
                 String b = m.get("protocolBinding") != null ? m.get("protocolBinding").toString() : "HTTP+JSON";

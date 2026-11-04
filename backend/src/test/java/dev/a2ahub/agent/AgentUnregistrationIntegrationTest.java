@@ -94,6 +94,11 @@ class AgentUnregistrationIntegrationTest {
             return RestClient.builder();
         }
 
+        @Bean
+        RestClient declaredTaskRestClient() {
+            return RestClient.builder().build();
+        }
+
         @Bean(name = "healthProbeTaskExecutor")
         AsyncTaskExecutor taskExecutor() {
             return new SimpleAsyncTaskExecutor();

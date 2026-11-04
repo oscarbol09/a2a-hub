@@ -1,21 +1,30 @@
 package dev.a2ahub.config;
 
+import dev.a2ahub.agent.AgentRepository;
+import dev.a2ahub.events.AgentEventPublisher;
 import dev.a2ahub.security.SecurityProperties;
 import dev.a2ahub.security.SsrfValidator;
+import dev.a2ahub.task.TaskPersistenceService;
+import dev.a2ahub.task.TaskRepository;
+import dev.a2ahub.task.TaskService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.core.NestedExceptionUtils;
+import org.springframework.core.task.AsyncTaskExecutor;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 
 import java.net.InetAddress;
 import java.net.UnknownHostException;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
 
 @DisplayName("RestClientConfig Unit Tests")
 class RestClientConfigTest {
@@ -42,6 +51,26 @@ class RestClientConfigTest {
     }
 
     @Test
+    void shouldWireTaskClientsUnambiguouslyAndReuseDeclaredClient() {
+        new ApplicationContextRunner()
+                .withUserConfiguration(RestClientConfig.class, TaskService.class)
+                .withBean(SsrfValidator.class, () -> ssrfValidator)
+                .withBean(TaskRepository.class, () -> mock(TaskRepository.class))
+                .withBean(AgentRepository.class, () -> mock(AgentRepository.class))
+                .withBean(TaskPersistenceService.class, () -> mock(TaskPersistenceService.class))
+                .withBean(AgentEventPublisher.class, () -> mock(AgentEventPublisher.class))
+                .withBean("healthProbeTaskExecutor", AsyncTaskExecutor.class, () -> mock(AsyncTaskExecutor.class))
+                .run(context -> {
+                    assertThat(context).hasNotFailed().hasSingleBean(TaskService.class)
+                            .hasSingleBean(RestClient.class).hasSingleBean(RestClient.Builder.class);
+                    assertThat(context.getBean("declaredTaskRestClient"))
+                            .isSameAs(context.getBean("declaredTaskRestClient"));
+                    assertThat(context.getBean(RestClient.Builder.class))
+                            .isNotSameAs(context.getBean(RestClient.Builder.class));
+                });
+    }
+
+    @Test
     @DisplayName("Should enforce strict TLS hostname verification (CN/SAN validation)")
     void shouldEnforceStrictTlsHostnameVerification() {
         org.springframework.http.client.HttpComponentsClientHttpRequestFactory factory =
@@ -60,14 +89,14 @@ class RestClientConfigTest {
     })
     @DisplayName("Should block loopback and private IPs at socket-level DNS resolver (zero TOCTOU)")
     void shouldBlockLoopbackAndPrivateAtSocketLevel(String targetUrl) {
-        RestClient client = config.restClientBuilder().build();
-
-        assertThatThrownBy(() -> client.get().uri(targetUrl).retrieve().toBodilessEntity())
-                .isInstanceOf(ResourceAccessException.class)
-                .satisfies(ex -> {
-                    Throwable root = NestedExceptionUtils.getMostSpecificCause(ex);
-                    assertThat(root).isInstanceOf(UnknownHostException.class);
-                });
+        for (RestClient client : List.of(config.restClientBuilder().build(), config.declaredTaskRestClient())) {
+            assertThatThrownBy(() -> client.get().uri(targetUrl).retrieve().toBodilessEntity())
+                    .isInstanceOf(ResourceAccessException.class)
+                    .satisfies(ex -> {
+                        Throwable root = NestedExceptionUtils.getMostSpecificCause(ex);
+                        assertThat(root).isInstanceOf(UnknownHostException.class);
+                    });
+        }
     }
 
     @Test

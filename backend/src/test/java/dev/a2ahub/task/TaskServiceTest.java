@@ -74,6 +74,7 @@ class TaskServiceTest {
                 ssrfValidator,
                 eventPublisher,
                 restClientBuilder,
+                mock(RestClient.class),
                 new SimpleAsyncTaskExecutor()
         );
     }

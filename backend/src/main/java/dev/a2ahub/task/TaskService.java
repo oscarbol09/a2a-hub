@@ -1,6 +1,7 @@
 package dev.a2ahub.task;
 
 import dev.a2ahub.agent.Agent;
+import dev.a2ahub.agent.AgentCard;
 import dev.a2ahub.agent.AgentNotFoundException;
 import dev.a2ahub.agent.AgentRepository;
 import dev.a2ahub.events.AgentEventPublisher;
@@ -45,6 +46,7 @@ public class TaskService {
     private final SsrfValidator ssrfValidator;
     private final AgentEventPublisher eventPublisher;
     private final RestClient restClient;
+    private final RestClient declaredTaskRestClient;
     private final AsyncTaskExecutor taskExecutor;
 
     public TaskService(TaskRepository taskRepository,
@@ -53,6 +55,7 @@ public class TaskService {
                        SsrfValidator ssrfValidator,
                        AgentEventPublisher eventPublisher,
                        RestClient.Builder restClientBuilder,
+                       @Qualifier("declaredTaskRestClient") RestClient declaredTaskRestClient,
                        @Qualifier("healthProbeTaskExecutor") AsyncTaskExecutor taskExecutor) {
         this.taskRepository = taskRepository;
         this.agentRepository = agentRepository;
@@ -60,6 +63,7 @@ public class TaskService {
         this.ssrfValidator = ssrfValidator;
         this.eventPublisher = eventPublisher;
         this.restClient = restClientBuilder.build();
+        this.declaredTaskRestClient = declaredTaskRestClient;
         this.taskExecutor = taskExecutor;
     }
 
@@ -100,7 +104,18 @@ public class TaskService {
             throw new IllegalStateException("Target agent " + agent.getName() + " is currently OFFLINE");
         }
 
-        ssrfValidator.validateSafeRemoteUrl(agent.getUrl());
+        String agentUrl = agent.getUrl();
+        String agentName = agent.getName();
+        String authType = agent.getAuthType();
+        String authToken = agent.getAuthTokenEnc();
+        TaskEndpoint resolvedEndpoint = resolveTaskEndpoint(agent.getAgentCard(), agentUrl, authType, authToken);
+        String endpoint = resolvedEndpoint.url();
+        // Declarations are stateless even when their URL happens to equal the legacy fallback.
+        RestClient taskClient = resolvedEndpoint.declared() ? declaredTaskRestClient : restClient;
+
+        // DNS validation can perform network I/O: finish it before the admission transaction/row lock.
+        ssrfValidator.validateSafeRemoteUrl(agentUrl);
+        ssrfValidator.validateSafeRemoteUrl(endpoint);
 
         // Step 1: Persist initial task in a short transaction (< 2ms) via Spring proxy
         TaskDto submittedTask = persistenceService.createSubmittedTask(
@@ -113,10 +128,6 @@ public class TaskService {
         String traceparent = MDC.get("traceparent") != null ? MDC.get("traceparent") : generateW3cTraceparent();
 
         if (asyncRequested) {
-            String agentUrl = agent.getUrl();
-            String agentName = agent.getName();
-            String authType = agent.getAuthType();
-            String authToken = agent.getAuthTokenEnc();
             log.info("Dispatching async task {} for agent {} to virtual thread executor", submittedTask.id(), agentName);
             taskExecutor.execute(() -> {
                 try {
@@ -125,7 +136,7 @@ public class TaskService {
                     eventPublisher.publishTaskUpdated(workingDto);
                     
                     log.info("Starting background proxy execution for task {}", submittedTask.id());
-                    executeDownstreamProxy(submittedTask.id(), submittedTask.contextId(), agentName, agentUrl, submitRequest.payload(), correlationId, traceparent, authType, authToken);
+                    executeResolvedProxy(taskClient, submittedTask.id(), submittedTask.contextId(), agentName, endpoint, submitRequest.payload(), correlationId, traceparent, authType, authToken);
                     log.info("Completed background proxy execution for task {}", submittedTask.id());
                 } catch (Throwable t) {
 
@@ -135,9 +146,67 @@ public class TaskService {
             return new TaskExecutionResponse(submittedTask, true);
         } else {
             // Synchronous execution on current Virtual Thread
-            TaskDto completedDto = executeDownstreamProxy(submittedTask.id(), submittedTask.contextId(), agent.getName(), agent.getUrl(), submitRequest.payload(), correlationId, traceparent, agent.getAuthType(), agent.getAuthTokenEnc());
+            TaskDto completedDto = executeResolvedProxy(taskClient, submittedTask.id(), submittedTask.contextId(), agentName, endpoint, submitRequest.payload(), correlationId, traceparent, authType, authToken);
             return new TaskExecutionResponse(completedDto, false);
         }
+    }
+
+    private record TaskEndpoint(String url, boolean declared) {}
+
+    private TaskEndpoint resolveTaskEndpoint(AgentCard card, String agentUrl, String authType, String authToken) {
+        String endpoint = null;
+        boolean declaresEndpoint = false;
+        for (AgentCard.AgentInterface candidate : card != null ? card.interfaces() : List.<AgentCard.AgentInterface>of()) {
+            if (candidate.url() == null || candidate.url().isBlank()) {
+                continue;
+            }
+            declaresEndpoint = true;
+            if (candidate.protocolBinding() == null || "HTTP+JSON".equalsIgnoreCase(candidate.protocolBinding().trim())) {
+                endpoint = candidate.url().trim();
+                break;
+            }
+        }
+        if (endpoint == null) {
+            if (declaresEndpoint) {
+                throw new IllegalArgumentException("Agent declares no compatible HTTP+JSON task endpoint");
+            }
+            endpoint = agentUrl.endsWith("/") ? agentUrl + "tasks" : agentUrl + "/tasks";
+        }
+
+        URI registered = parseTaskUri(agentUrl);
+        URI target = parseTaskUri(endpoint);
+        if ("https".equalsIgnoreCase(registered.getScheme()) && "http".equalsIgnoreCase(target.getScheme())) {
+            throw new IllegalArgumentException("Task endpoint cannot downgrade HTTPS to HTTP");
+        }
+        boolean sendsCredentials = authToken != null && !authToken.isBlank()
+                && ("BEARER".equalsIgnoreCase(authType) || "API_KEY".equalsIgnoreCase(authType));
+        boolean sameOrigin = registered.getScheme().equalsIgnoreCase(target.getScheme())
+                && registered.getHost().equalsIgnoreCase(target.getHost())
+                && effectivePort(registered) == effectivePort(target);
+        if (sendsCredentials && !sameOrigin) {
+            throw new IllegalArgumentException("Authenticated task endpoint must share the registered agent origin");
+        }
+        return new TaskEndpoint(target.toString(), declaresEndpoint);
+    }
+
+    private URI parseTaskUri(String value) {
+        URI uri;
+        try {
+            uri = URI.create(value.trim());
+        } catch (RuntimeException e) {
+            // Do not echo untrusted URLs: userinfo or query parameters may contain secrets.
+            throw new IllegalArgumentException("Invalid task endpoint URL");
+        }
+        if ((!"http".equalsIgnoreCase(uri.getScheme()) && !"https".equalsIgnoreCase(uri.getScheme()))
+                || uri.getHost() == null || uri.getRawUserInfo() != null || uri.getRawFragment() != null
+                || uri.getPort() == 0 || uri.getPort() > 65535 || uri.getRawAuthority().endsWith(":")) {
+            throw new IllegalArgumentException("Task endpoint must be an absolute HTTP(S) URL with a valid host/port and no userinfo or fragment");
+        }
+        return uri;
+    }
+
+    private int effectivePort(URI uri) {
+        return uri.getPort() != -1 ? uri.getPort() : ("https".equalsIgnoreCase(uri.getScheme()) ? 443 : 80);
     }
 
     /**
@@ -152,6 +221,10 @@ public class TaskService {
      */
     public TaskDto executeDownstreamProxy(UUID taskId, String contextId, String agentName, String agentUrl, Map<String, ?> payload, String correlationId, String traceparent, String authType, String authToken) {
         String endpoint = agentUrl.endsWith("/") ? agentUrl + "tasks" : agentUrl + "/tasks";
+        return executeResolvedProxy(restClient, taskId, contextId, agentName, endpoint, payload, correlationId, traceparent, authType, authToken);
+    }
+
+    private TaskDto executeResolvedProxy(RestClient taskClient, UUID taskId, String contextId, String agentName, String endpoint, Map<String, ?> payload, String correlationId, String traceparent, String authType, String authToken) {
         TaskState finalState;
         Map<String, Object> responseBody = null;
         String errorMessage = null;
@@ -162,7 +235,7 @@ public class TaskService {
         }
 
         try {
-            RestClient.RequestBodySpec requestSpec = restClient.post()
+            RestClient.RequestBodySpec requestSpec = taskClient.post()
                     .uri(URI.create(endpoint))
                     .contentType(MediaType.APPLICATION_JSON)
                     .header("X-Correlation-Id", correlationId)

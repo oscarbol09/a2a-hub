@@ -3,6 +3,8 @@ package dev.a2ahub.agent;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.List;
 import java.util.Map;
@@ -13,6 +15,21 @@ import static org.assertj.core.api.Assertions.assertThat;
 class AgentCardTest {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
+
+    @ParameterizedTest
+    @ValueSource(strings = {"https://agent.example/api/tasks", "http://agent.example:8082/tasks",
+            "HTTPS://agent.example/tasks", "https://[", "file:///etc/passwd",
+            "//agent.example/tasks", " \t//agent.example/tasks \t"})
+    void shouldNormalizeUrlStringsAsEndpoints(String endpoint) throws Exception {
+        String json = objectMapper.writeValueAsString(Map.of("supportedInterfaces", List.of(endpoint, "REST", "JSON-RPC")));
+        AgentCard card = objectMapper.readValue(json, AgentCard.class);
+
+        assertThat(card.supportedInterfaces()).containsExactly(endpoint, "REST", "JSON-RPC");
+        assertThat(card.interfaces()).containsExactly(
+                new AgentCard.AgentInterface(endpoint.trim(), "HTTP+JSON", "1.0"),
+                new AgentCard.AgentInterface(null, "REST", "1.0"),
+                new AgentCard.AgentInterface(null, "JSON-RPC", "1.0"));
+    }
 
     @Test
     @DisplayName("Should apply resilient defaults in compact constructor when passed null collections")
