@@ -5,6 +5,7 @@ import org.apache.hc.client5.http.DnsResolver;
 import org.apache.hc.client5.http.config.ConnectionConfig;
 import org.apache.hc.client5.http.config.RequestConfig;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
+import org.apache.hc.client5.http.impl.classic.HttpClientBuilder;
 import org.apache.hc.client5.http.impl.classic.HttpClients;
 import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManager;
 import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManagerBuilder;
@@ -34,8 +35,17 @@ public class RestClientConfig {
     @Bean
     @Scope("prototype")
     public RestClient.Builder restClientBuilder() {
+        return taskClientBuilder(true);
+    }
+
+    @Bean
+    public RestClient declaredTaskRestClient() {
+        return taskClientBuilder(false).build();
+    }
+
+    private RestClient.Builder taskClientBuilder(boolean cookiesEnabled) {
         HttpComponentsClientHttpRequestFactory requestFactory =
-                createRequestFactory(ssrfValidator, Duration.ofSeconds(3), Duration.ofSeconds(60));
+                createRequestFactory(ssrfValidator, Duration.ofSeconds(3), Duration.ofSeconds(60), cookiesEnabled);
 
         return RestClient.builder()
                 .requestFactory(requestFactory);
@@ -49,6 +59,14 @@ public class RestClientConfig {
             SsrfValidator ssrfValidator,
             Duration connectTimeout,
             Duration readTimeout) {
+        return createRequestFactory(ssrfValidator, connectTimeout, readTimeout, true);
+    }
+
+    private static HttpComponentsClientHttpRequestFactory createRequestFactory(
+            SsrfValidator ssrfValidator,
+            Duration connectTimeout,
+            Duration readTimeout,
+            boolean cookiesEnabled) {
 
         DnsResolver dnsResolver = new DnsResolver() {
             @Override
@@ -83,11 +101,14 @@ public class RestClientConfig {
                 .setConnectionRequestTimeout(Timeout.ofMilliseconds(connectTimeout.toMillis()))
                 .build();
 
-        CloseableHttpClient httpClient = HttpClients.custom()
+        HttpClientBuilder clientBuilder = HttpClients.custom()
                 .setConnectionManager(connectionManager)
                 .setDefaultRequestConfig(requestConfig)
-                .disableRedirectHandling()
-                .build();
+                .disableRedirectHandling();
+        if (!cookiesEnabled) {
+            clientBuilder.disableCookieManagement();
+        }
+        CloseableHttpClient httpClient = clientBuilder.build();
 
         HttpComponentsClientHttpRequestFactory factory = new HttpComponentsClientHttpRequestFactory(httpClient);
         factory.setConnectTimeout(connectTimeout);
