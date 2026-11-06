@@ -29,6 +29,7 @@ import java.util.UUID;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -151,6 +152,91 @@ class TaskControllerTest {
                 .andExpect(jsonPath("$.status").value(404))
                 .andExpect(jsonPath("$.title").value("Not Found"))
                 .andExpect(jsonPath("$.detail").value("Agent not found with ID: " + agentId));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/tasks - Should return 400 when contextId exceeds 255 characters")
+    void shouldReturn400WhenContextIdTooLong() throws Exception {
+        TaskService.SubmitTaskRequest request = new TaskService.SubmitTaskRequest(
+                UUID.randomUUID(),
+                "c".repeat(256),
+                Map.of("message", "hello agent")
+        );
+
+        mockMvc.perform(post("/api/v1/tasks")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.title").value("Validation Failed"))
+                .andExpect(jsonPath("$.details.contextId").value("contextId must not exceed 255 characters"));
+
+        verify(taskService, never()).submitTask(any(TaskService.SubmitTaskRequest.class), anyBoolean());
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/tasks - Should accept contextId of exactly 255 characters")
+    void shouldAcceptContextIdAtMaxLength() throws Exception {
+        UUID agentId = UUID.randomUUID();
+        String contextId = "c".repeat(255);
+        TaskService.SubmitTaskRequest request = new TaskService.SubmitTaskRequest(
+                agentId,
+                contextId,
+                Map.of("message", "hello agent")
+        );
+
+        TaskService.TaskDto taskDto = new TaskService.TaskDto(
+                UUID.randomUUID(),
+                agentId,
+                "EchoAgent",
+                contextId,
+                "COMPLETED",
+                Map.of("message", "hello agent"),
+                Map.of("reply", "hello caller"),
+                null,
+                ZonedDateTime.now(),
+                ZonedDateTime.now()
+        );
+
+        when(taskService.submitTask(any(TaskService.SubmitTaskRequest.class), eq(false)))
+                .thenReturn(new TaskService.TaskExecutionResponse(taskDto, false));
+
+        mockMvc.perform(post("/api/v1/tasks")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.contextId").value(contextId));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/tasks - Should still accept a missing contextId")
+    void shouldAcceptMissingContextId() throws Exception {
+        UUID agentId = UUID.randomUUID();
+        TaskService.SubmitTaskRequest request = new TaskService.SubmitTaskRequest(
+                agentId,
+                null,
+                Map.of("message", "hello agent")
+        );
+
+        TaskService.TaskDto taskDto = new TaskService.TaskDto(
+                UUID.randomUUID(),
+                agentId,
+                "EchoAgent",
+                UUID.randomUUID().toString(),
+                "COMPLETED",
+                Map.of("message", "hello agent"),
+                Map.of("reply", "hello caller"),
+                null,
+                ZonedDateTime.now(),
+                ZonedDateTime.now()
+        );
+
+        when(taskService.submitTask(any(TaskService.SubmitTaskRequest.class), eq(false)))
+                .thenReturn(new TaskService.TaskExecutionResponse(taskDto, false));
+
+        mockMvc.perform(post("/api/v1/tasks")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated());
     }
 
     @Test
