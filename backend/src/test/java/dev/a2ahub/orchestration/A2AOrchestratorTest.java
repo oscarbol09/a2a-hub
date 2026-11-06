@@ -90,6 +90,27 @@ class A2AOrchestratorTest {
     }
 
     @Test
+    @DisplayName("Should parse JSON when the LLM wraps it in prose and markdown")
+    void shouldParseJsonWithConversationalPreambleAndSuffix() {
+        when(discoveryService.discoverSemanticWithScores("Route this task", 5))
+                .thenReturn(List.of(new AgentDiscoveryService.ScoredAgent(weatherAgent, 0.94)));
+
+        String llmResponse = "Here is the routing decision:\n```json\n"
+                + "{\"agentId\":\"" + weatherAgent.getId() + "\","
+                + "\"agentName\":\"WeatherAgent\","
+                + "\"reasoning\":\"Matches the weather task.\"}\n```\n"
+                + "The decision is based on the candidate capabilities.";
+        when(chatModel.generate(any(SystemMessage.class), any(UserMessage.class)))
+                .thenReturn(Response.from(AiMessage.from(llmResponse)));
+
+        AiSuggestionDto suggestion = orchestrator.suggestAgent("Route this task");
+
+        assertThat(suggestion.getAgentId()).isEqualTo(weatherAgent.getId());
+        assertThat(suggestion.getSource()).isEqualTo("LLM_REASONING");
+        assertThat(suggestion.isFallback()).isFalse();
+    }
+
+    @Test
     @DisplayName("LLM01 Prompt Injection Defense: Should escape XML characters in user task to prevent tag breakout")
     void shouldSanitizePromptInjectionDelimiters() {
         when(discoveryService.discoverSemanticWithScores(anyString(), anyInt()))

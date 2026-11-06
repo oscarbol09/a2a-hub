@@ -215,15 +215,31 @@ public class A2AOrchestrator {
         if (response == null || response.isBlank()) return null;
         try {
             String clean = response.trim();
-            if (clean.startsWith("```json")) {
-                clean = clean.substring(7);
-            } else if (clean.startsWith("```")) {
-                clean = clean.substring(3);
+            int start = clean.indexOf('{');
+            if (start < 0) return null;
+
+            int depth = 0;
+            boolean inString = false;
+            boolean escaped = false;
+            for (int i = start; i < clean.length(); i++) {
+                char current = clean.charAt(i);
+                if (inString) {
+                    if (escaped) {
+                        escaped = false;
+                    } else if (current == '\\') {
+                        escaped = true;
+                    } else if (current == '"') {
+                        inString = false;
+                    }
+                } else if (current == '"') {
+                    inString = true;
+                } else if (current == '{') {
+                    depth++;
+                } else if (current == '}' && --depth == 0) {
+                    return objectMapper.readValue(clean.substring(start, i + 1), RoutingDecision.class);
+                }
             }
-            if (clean.endsWith("```")) {
-                clean = clean.substring(0, clean.length() - 3);
-            }
-            return objectMapper.readValue(clean.trim(), RoutingDecision.class);
+            return null;
         } catch (JsonProcessingException e) {
             log.error("Failed to deserialize LLM JSON output: {}", response, e);
             return null;
