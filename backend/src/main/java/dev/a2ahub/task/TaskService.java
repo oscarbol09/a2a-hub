@@ -338,7 +338,7 @@ public class TaskService {
 
     public record SubmitTaskRequest(
             @jakarta.validation.constraints.NotNull(message = "Agent ID is required") UUID agentId,
-            String contextId,
+            @jakarta.validation.constraints.Size(max = 255, message = "contextId must not exceed 255 characters") String contextId,
             @jakarta.validation.constraints.NotEmpty(message = "Task payload cannot be empty") Map<String, ?> payload,
             Boolean async
     ) {
