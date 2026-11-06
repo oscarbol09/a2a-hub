@@ -8,6 +8,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.ZonedDateTime;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -89,16 +90,26 @@ public class TaskPersistenceService {
     }
 
     /**
-     * Recovers in-flight tasks left in SUBMITTED state across application restarts.
+     * In-flight states that can only be left behind by a process that halted mid-task.
+     * SUBMITTED: persisted but not yet picked up by the executor.
+     * WORKING: picked up by the background executor, downstream proxy call in progress.
+     */
+    private static final List<TaskState> ORPHANABLE_STATES = List.of(TaskState.SUBMITTED, TaskState.WORKING);
+
+    /**
+     * Recovers in-flight tasks left in SUBMITTED or WORKING state across application restarts.
      * Marks orphaned tasks as FAILED with descriptive error context.
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public int recoverOrphanedTasks() {
-        java.util.List<TaskEntity> stuckTasks = taskRepository.findByState(TaskState.SUBMITTED);
+        List<TaskEntity> stuckTasks = taskRepository.findByStateIn(ORPHANABLE_STATES);
         int recovered = 0;
         for (TaskEntity task : stuckTasks) {
+            // Capture the original state before overwriting it so the message stays accurate.
+            TaskState orphanedState = task.getState();
             task.setState(TaskState.FAILED);
-            task.setErrorDetail("Recovered after application restart: task was orphaned in SUBMITTED state when previous node process halted.");
+            task.setErrorDetail("Recovered after application restart: task was orphaned in " + orphanedState
+                    + " state when previous node process halted.");
             task.setUpdatedAt(ZonedDateTime.now());
             taskRepository.save(task);
             recovered++;
