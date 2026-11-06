@@ -11,6 +11,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -34,6 +35,8 @@ class TaskPersistenceServiceTest {
 
     @InjectMocks
     private TaskPersistenceService persistenceService;
+
+    private static final List<TaskState> RECOVERABLE_STATES = List.of(TaskState.SUBMITTED, TaskState.WORKING);
 
     @Test
     @DisplayName("Should persist submitted task with explicit contextId and SUBMITTED state")
@@ -208,15 +211,10 @@ class TaskPersistenceServiceTest {
     @Test
     @DisplayName("Should recover orphaned tasks in SUBMITTED state to FAILED")
     void shouldRecoverOrphanedTasks() {
-        TaskEntity stuck1 = new TaskEntity();
-        stuck1.setId(UUID.randomUUID());
-        stuck1.setState(TaskState.SUBMITTED);
+        TaskEntity stuck1 = taskInState(TaskState.SUBMITTED);
+        TaskEntity stuck2 = taskInState(TaskState.SUBMITTED);
 
-        TaskEntity stuck2 = new TaskEntity();
-        stuck2.setId(UUID.randomUUID());
-        stuck2.setState(TaskState.SUBMITTED);
-
-        when(taskRepository.findByState(TaskState.SUBMITTED)).thenReturn(java.util.List.of(stuck1, stuck2));
+        when(taskRepository.findByStateIn(RECOVERABLE_STATES)).thenReturn(List.of(stuck1, stuck2));
         when(taskRepository.save(any(TaskEntity.class))).thenAnswer(inv -> inv.getArgument(0));
 
         int recovered = persistenceService.recoverOrphanedTasks();
@@ -226,5 +224,54 @@ class TaskPersistenceServiceTest {
         assertThat(stuck1.getErrorDetail()).contains("Recovered after application restart");
         assertThat(stuck2.getState()).isEqualTo(TaskState.FAILED);
         assertThat(stuck2.getErrorDetail()).contains("Recovered after application restart");
+    }
+
+    @Test
+    @DisplayName("Should recover orphaned tasks left in WORKING state to FAILED")
+    void shouldRecoverOrphanedWorkingTasks() {
+        TaskEntity working = taskInState(TaskState.WORKING);
+
+        when(taskRepository.findByStateIn(RECOVERABLE_STATES)).thenReturn(List.of(working));
+        when(taskRepository.save(any(TaskEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        int recovered = persistenceService.recoverOrphanedTasks();
+
+        assertThat(recovered).isEqualTo(1);
+        assertThat(working.getState()).isEqualTo(TaskState.FAILED);
+        assertThat(working.getUpdatedAt()).isNotNull();
+        verify(taskRepository).save(working);
+    }
+
+    @Test
+    @DisplayName("Should report the original orphaned state in the recovery error detail")
+    void shouldReportOriginalStateInErrorDetail() {
+        TaskEntity submitted = taskInState(TaskState.SUBMITTED);
+        TaskEntity working = taskInState(TaskState.WORKING);
+
+        when(taskRepository.findByStateIn(RECOVERABLE_STATES)).thenReturn(List.of(submitted, working));
+        when(taskRepository.save(any(TaskEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        persistenceService.recoverOrphanedTasks();
+
+        assertThat(submitted.getErrorDetail()).contains("orphaned in SUBMITTED state");
+        assertThat(working.getErrorDetail()).contains("orphaned in WORKING state");
+    }
+
+    @Test
+    @DisplayName("Should recover nothing and save nothing when no tasks are orphaned")
+    void shouldRecoverNothingWhenNoOrphanedTasks() {
+        when(taskRepository.findByStateIn(RECOVERABLE_STATES)).thenReturn(List.of());
+
+        int recovered = persistenceService.recoverOrphanedTasks();
+
+        assertThat(recovered).isZero();
+        verify(taskRepository, never()).save(any());
+    }
+
+    private static TaskEntity taskInState(TaskState state) {
+        TaskEntity task = new TaskEntity();
+        task.setId(UUID.randomUUID());
+        task.setState(state);
+        return task;
     }
 }

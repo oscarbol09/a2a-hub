@@ -68,13 +68,13 @@ public class TaskService {
     }
 
     /**
-     * Startup recovery: reconciles any tasks left orphaned in SUBMITTED state from prior crashes or restarts.
+     * Startup recovery: reconciles any tasks left orphaned in SUBMITTED or WORKING state from prior crashes or restarts.
      */
     @EventListener(ApplicationReadyEvent.class)
     public void recoverOrphanedTasksOnStartup() {
         int recovered = persistenceService.recoverOrphanedTasks();
         if (recovered > 0) {
-            log.warn("Application startup recovery: reconciled {} orphaned tasks from SUBMITTED to FAILED state.", recovered);
+            log.warn("Application startup recovery: reconciled {} orphaned tasks from SUBMITTED or WORKING to FAILED state.", recovered);
         }
     }
 

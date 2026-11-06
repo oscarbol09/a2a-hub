@@ -17,6 +17,8 @@ public interface TaskRepository extends JpaRepository<TaskEntity, UUID> {
 
     List<TaskEntity> findByState(TaskState state);
 
+    List<TaskEntity> findByStateIn(Collection<TaskState> states);
+
     boolean existsByAgent_IdAndStateIn(UUID agentId, Collection<TaskState> states);
 
     /**
