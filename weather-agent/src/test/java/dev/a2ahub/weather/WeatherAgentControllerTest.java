@@ -64,7 +64,9 @@ class WeatherAgentControllerTest {
     @Test
     @DisplayName("a) GET /.well-known/agent-card.json returns A2A v1.0 schema, skills, supportedInterfaces, capabilities")
     void testGetAgentCardSchema() throws Exception {
-        mockMvc.perform(get("/.well-known/agent-card.json")
+        // Simulates a Hub registering the locally-running agent at http://localhost:8081:
+        // the Host header of the card request must be mirrored into supportedInterfaces.
+        mockMvc.perform(get("http://localhost:8081/.well-known/agent-card.json")
                 .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.name").value("WeatherAgent"))
@@ -73,7 +75,7 @@ class WeatherAgentControllerTest {
                 .andExpect(jsonPath("$.capabilities.streaming").value(false))
                 .andExpect(jsonPath("$.capabilities.pushNotifications").value(false))
                 .andExpect(jsonPath("$.supportedInterfaces", hasSize(1)))
-                .andExpect(jsonPath("$.supportedInterfaces[0].url").value("http://weather-agent:8081/tasks"))
+                .andExpect(jsonPath("$.supportedInterfaces[0].url").value("http://localhost:8081/tasks"))
                 .andExpect(jsonPath("$.supportedInterfaces[0].protocolBinding").value("HTTP+JSON"))
                 .andExpect(jsonPath("$.supportedInterfaces[0].protocolVersion").value("1.0"))
                 .andExpect(jsonPath("$.skills", hasSize(1)))
@@ -84,6 +86,66 @@ class WeatherAgentControllerTest {
                 .andExpect(jsonPath("$.skills[0].tags[0]").value("weather"))
                 .andExpect(jsonPath("$.skills[0].tags[1]").value("forecast"))
                 .andExpect(jsonPath("$.skills[0].tags[2]").value("meteo"));
+    }
+
+    @Test
+    @DisplayName("a2) supportedInterfaces URL is derived from the request host, scheme, and port")
+    void testGetAgentCardDerivesEndpointUrlFromRequest() throws Exception {
+        // Kubernetes/LB-style fetch: the advertised endpoint mirrors the fetch address.
+        mockMvc.perform(get("https://weather-abc123.us-east-1.elb.amazonaws.com:8443/.well-known/agent-card.json")
+                .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.supportedInterfaces[0].url").value("https://weather-abc123.us-east-1.elb.amazonaws.com:8443/tasks"));
+    }
+
+    @Test
+    @DisplayName("a3) configured a2a.agent.base-url pins the advertised task endpoint regardless of Host header")
+    void testGetAgentCardConfiguredBaseUrlOverridesRequestDerivation() {
+        org.springframework.mock.env.MockEnvironment testEnv = new org.springframework.mock.env.MockEnvironment();
+        testEnv.setActiveProfiles("test");
+        WeatherAgentController controller = new WeatherAgentController(
+                chatClientBuilder, "mock-dev-key", testEnv, "http://weather-agent:8081/");
+
+        org.springframework.mock.web.MockHttpServletRequest request = new org.springframework.mock.web.MockHttpServletRequest();
+        request.setScheme("http");
+        request.setServerName("localhost");
+        request.setServerPort(9999);
+
+        @SuppressWarnings("unchecked")
+        java.util.List<java.util.Map<String, Object>> interfaces =
+                (java.util.List<java.util.Map<String, Object>>) controller.getAgentCard(request).get("supportedInterfaces");
+        org.junit.jupiter.api.Assertions.assertEquals(
+                "http://weather-agent:8081/tasks", interfaces.get(0).get("url"));
+    }
+
+    @Test
+    @DisplayName("a4) scheme-default ports (80/443) are stripped from the derived advertised endpoint")
+    void testGetAgentCardStripsSchemeDefaultPorts() {
+        org.springframework.mock.env.MockEnvironment testEnv = new org.springframework.mock.env.MockEnvironment();
+        testEnv.setActiveProfiles("test");
+        WeatherAgentController controller = new WeatherAgentController(
+                chatClientBuilder, "mock-dev-key", testEnv);
+
+        org.springframework.mock.web.MockHttpServletRequest http = new org.springframework.mock.web.MockHttpServletRequest();
+        http.setScheme("http");
+        http.setServerName("weather.example.internal");
+        http.setServerPort(80);
+
+        org.springframework.mock.web.MockHttpServletRequest https = new org.springframework.mock.web.MockHttpServletRequest();
+        https.setScheme("https");
+        https.setServerName("weather.example.internal");
+        https.setServerPort(443);
+
+        @SuppressWarnings("unchecked")
+        java.util.List<java.util.Map<String, Object>> httpInterfaces =
+                (java.util.List<java.util.Map<String, Object>>) controller.getAgentCard(http).get("supportedInterfaces");
+        @SuppressWarnings("unchecked")
+        java.util.List<java.util.Map<String, Object>> httpsInterfaces =
+                (java.util.List<java.util.Map<String, Object>>) controller.getAgentCard(https).get("supportedInterfaces");
+        org.junit.jupiter.api.Assertions.assertEquals(
+                "http://weather.example.internal/tasks", httpInterfaces.get(0).get("url"));
+        org.junit.jupiter.api.Assertions.assertEquals(
+                "https://weather.example.internal/tasks", httpsInterfaces.get(0).get("url"));
     }
 
     @Test
