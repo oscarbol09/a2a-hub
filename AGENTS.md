@@ -104,6 +104,19 @@ When an error response is received:
 
 ---
 
+## 2.4 Advertised Task Endpoint Resolution (Mandatory)
+
+The `supportedInterfaces[].url` in the Agent Card **must** point back to a routable `/tasks` address for the environment the agent is running in. Hardcoding container network hostnames (e.g., `http://weather-agent:8081/tasks`) breaks task dispatch with `java.net.UnknownHostException` whenever the Hub registers the agent at a different address (localhost, ECS/Kubernetes service DNS, or a load balancer).
+
+Reference agents resolve the advertised endpoint in the following order:
+
+1. **Explicit configuration:** property `a2a.agent.base-url` (relaxed binding accepts env var `A2A_AGENT_BASE_URL`). Pin this whenever the Host header cannot be assumed to match the registered address (Kubernetes/ECS, TLS-terminating proxies, shared multi-environment DNS).
+2. **Dynamic derivation:** otherwise, mirror the scheme, host, port, and context path of the *incoming agent-card request* (equivalent of `ServletUriComponentsBuilder.fromCurrentContextPath()`), appending `/tasks`. An agent registered at `http://localhost:8081` therefore advertises `http://localhost:8081/tasks`, and Docker Compose probes that arrive with `Host: weather-agent:8081` advertise the compose-network address.
+
+**Security guidance:** because dynamic derivation trusts the request Host header, external agent authors SHOULD set `A2A_AGENT_BASE_URL` explicitly in production. The Hub independently protects dispatch via SSRF validation of the resolved endpoint and by rejecting same-origin violations for authenticated agents.
+
+---
+
 ## 3. Health Probe Expectations & Two-Tier Verification
 
 A2A-Hub evaluates registered agent health periodically (`a2ahub.health.interval-ms`, default 30 seconds) using a decoupled two-tier verification model:
