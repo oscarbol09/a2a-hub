@@ -2,16 +2,19 @@ package dev.a2ahub.weather;
 
 import dev.a2ahub.weather.dto.TaskRequest;
 import dev.a2ahub.weather.dto.TaskResponse;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.lang.Nullable;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,6 +27,7 @@ import java.util.Map;
 public class WeatherAgentController {
 
     private static final Logger log = LoggerFactory.getLogger(WeatherAgentController.class);
+    private static final int DEFAULT_SERVER_PORT = 8081;
 
     private static final String SYSTEM_PROMPT = """
             You are WeatherAgent, an autonomous AI assistant specialized strictly in meteorological analysis, \
@@ -46,22 +50,32 @@ public class WeatherAgentController {
     private final boolean mockMode;
     private final Environment env;
     private final String apiKey;
+    private final String configuredBaseUrl;
 
     @Autowired
     public WeatherAgentController(
             ChatClient.Builder chatClientBuilder,
             @Value("${spring.ai.google.genai.api-key:mock-dev-key}") String apiKey,
-            @Autowired(required = false) Environment env) {
+            @Autowired(required = false) Environment env,
+            @Value("${a2a.agent.base-url:}") String configuredBaseUrl) {
         this.chatClient = chatClientBuilder.defaultSystem(SYSTEM_PROMPT).build();
         this.apiKey = apiKey;
         this.env = env;
         this.mockMode = apiKey == null || apiKey.isBlank() || apiKey.equalsIgnoreCase("mock-dev-key");
+        this.configuredBaseUrl = configuredBaseUrl == null ? "" : configuredBaseUrl.trim();
     }
 
     public WeatherAgentController(
             ChatClient.Builder chatClientBuilder,
             String apiKey) {
         this(chatClientBuilder, apiKey, null);
+    }
+
+    public WeatherAgentController(
+            ChatClient.Builder chatClientBuilder,
+            String apiKey,
+            Environment env) {
+        this(chatClientBuilder, apiKey, env, "");
     }
 
     @PostConstruct
@@ -77,7 +91,7 @@ public class WeatherAgentController {
     }
 
     @GetMapping("/.well-known/agent-card.json")
-    public Map<String, Object> getAgentCard() {
+    public Map<String, Object> getAgentCard(@Nullable HttpServletRequest request) {
         return Map.of(
                 "name", "WeatherAgent",
                 "version", "1.0.0",
@@ -88,7 +102,7 @@ public class WeatherAgentController {
                 ),
                 "supportedInterfaces", List.of(
                         Map.of(
-                                "url", "http://weather-agent:8081/tasks",
+                                "url", resolveTaskEndpointUrl(request),
                                 "protocolBinding", "HTTP+JSON",
                                 "protocolVersion", "1.0"
                         )
@@ -102,6 +116,57 @@ public class WeatherAgentController {
                         )
                 )
         );
+    }
+
+    /**
+     * Resolves the task endpoint advertised in this agent card.
+     *
+     * <p>Resolution order:</p>
+     * <ol>
+     *   <li>Explicit configuration via {@code a2a.agent.base-url} (relaxed binding also
+     *       accepts the {@code A2A_AGENT_BASE_URL} environment variable). Recommended for
+     *       Kubernetes/ECS deployments and other setups where the Host header must not be
+     *       assumed to match the address the Hub registered.</li>
+     *   <li>Dynamic derivation from the incoming request (equivalent of
+     *       {@code ServletUriComponentsBuilder.fromCurrentContextPath()}): the advertised
+     *       base URL mirrors the scheme, host, port, and context path the caller used to
+     *       fetch this card. An agent registered at {@code http://localhost:8081} therefore
+     *       advertises {@code http://localhost:8081/tasks} instead of an unresolvable
+     *       container hostname such as {@code weather-agent}.</li>
+     * </ol>
+     */
+    private String resolveTaskEndpointUrl(@Nullable HttpServletRequest request) {
+        if (configuredBaseUrl != null && !configuredBaseUrl.isBlank()) {
+            String base = configuredBaseUrl.endsWith("/")
+                    ? configuredBaseUrl.substring(0, configuredBaseUrl.length() - 1)
+                    : configuredBaseUrl;
+            return base + "/tasks";
+        }
+        return deriveBaseUrlFromRequest(request) + "/tasks";
+    }
+
+    private String deriveBaseUrlFromRequest(@Nullable HttpServletRequest request) {
+        if (request == null) {
+            // No request context available (defensive fallback for direct invocations).
+            int port = env != null ? env.getProperty("server.port", Integer.class, DEFAULT_SERVER_PORT) : DEFAULT_SERVER_PORT;
+            log.debug("Agent card fetched outside a request context; advertising http://localhost:{}", port);
+            return "http://localhost:" + port;
+        }
+        String scheme = request.getScheme() != null ? request.getScheme() : "http";
+        String host = request.getServerName();
+        int port = request.getServerPort();
+        boolean schemeDefaultPort = ("http".equalsIgnoreCase(scheme) && port == 80)
+                || ("https".equalsIgnoreCase(scheme) && port == 443);
+        UriComponentsBuilder builder = UriComponentsBuilder.newInstance()
+                .scheme(scheme)
+                .host(host)
+                .path(request.getContextPath() != null ? request.getContextPath() : "");
+        if (!schemeDefaultPort && port > 0) {
+            builder.port(port);
+        }
+        String base = builder.build().toUriString();
+        log.debug("Advertised task endpoint resolved dynamically from incoming request as {}/tasks", base);
+        return base;
     }
 
     @PostMapping("/tasks")

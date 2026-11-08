@@ -26,6 +26,11 @@ services:
     environment:
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.8-flash}
+      # Pins the /tasks endpoint advertised in /.well-known/agent-card.json to the
+      # bridge-network service address registered by the Hub. When running outside
+      # Docker Compose, leave A2A_AGENT_BASE_URL unset — the agent then derives the
+      # endpoint dynamically from the Host header of the incoming card request.
+      A2A_AGENT_BASE_URL: http://weather-agent:8081
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:8081/.well-known/agent-card.json"]
       interval: 15s
@@ -43,6 +48,11 @@ services:
     environment:
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.8-flash}
+      # Pins the /tasks endpoint advertised in /.well-known/agent-card.json to the
+      # bridge-network service address registered by the Hub. When running outside
+      # Docker Compose, leave A2A_AGENT_BASE_URL unset — the agent then derives the
+      # endpoint dynamically from the Host header of the incoming card request.
+      A2A_AGENT_BASE_URL: http://calculator-agent:8082
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:8082/.well-known/agent-card.json"]
       interval: 15s
