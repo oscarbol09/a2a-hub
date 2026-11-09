@@ -102,6 +102,12 @@ public class RateLimitFilter extends OncePerRequestFilter {
                                     HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {
 
+        if (securityProperties != null && securityProperties.getRateLimit() != null
+                && !securityProperties.getRateLimit().isEnabled()) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+
         RequestPath requestPath;
         if (ServletRequestPathUtils.hasParsedRequestPath(request)) {
             requestPath = ServletRequestPathUtils.getParsedRequestPath(request);

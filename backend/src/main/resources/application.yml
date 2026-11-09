@@ -47,6 +47,7 @@ a2ahub:
     encryption-key: ${A2A_HUB_ENCRYPTION_KEY:a2a-hub-default-master-encryption-key-32bytes!}
     require-auth-for-reads: ${A2A_HUB_REQUIRE_AUTH_READS:false}
     rate-limit:
+      enabled: ${A2A_HUB_RATE_LIMIT_ENABLED:true}
       capacity: ${A2A_HUB_RATE_LIMIT_CAPACITY:120}
       duration-seconds: ${A2A_HUB_RATE_LIMIT_DURATION:60}
       max-buckets: ${A2A_HUB_RATE_LIMIT_MAX_BUCKETS:10000}
