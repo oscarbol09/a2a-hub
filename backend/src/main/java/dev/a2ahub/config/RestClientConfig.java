@@ -91,6 +91,8 @@ public class RestClientConfig {
         PoolingHttpClientConnectionManager connectionManager = PoolingHttpClientConnectionManagerBuilder.create()
                 .setDnsResolver(dnsResolver)
                 .setSSLSocketFactory(sslSocketFactory)
+                .setMaxConnTotal(200)
+                .setMaxConnPerRoute(50)
                 .setDefaultConnectionConfig(ConnectionConfig.custom()
                         .setConnectTimeout(Timeout.ofMilliseconds(connectTimeout.toMillis()))
                         .build())

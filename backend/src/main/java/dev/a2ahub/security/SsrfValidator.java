@@ -63,7 +63,7 @@ public class SsrfValidator {
     }
 
     /**
-     * Resolves all IP addresses for a host and validates that none are in restricted ranges.
+     * Resolves all IP addresses for a  host and validates that none are in restricted ranges.
      * Returns the resolved addresses to be used directly by the HTTP client (pinning DNS, zero TOCTOU).
      *
      * @param host the hostname or IP literal to resolve and validate
