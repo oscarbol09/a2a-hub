@@ -173,18 +173,21 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
         if (securityProperties != null && securityProperties.getRateLimit() != null) {
             List<String> configured = securityProperties.getRateLimit().getTrustedProxies();
-            if (configured != null) {
+            if (configured != null && !configured.isEmpty()) {
                 for (String proxyPattern : configured) {
                     if (matchesTrustedProxy(ip, proxyPattern)) {
                         return true;
                     }
                 }
+                // A configured allowlist is authoritative, even for loopback.
+                return false;
             }
         }
 
         try {
             InetAddress addr = InetAddress.getByName(ip);
-            return addr.isLoopbackAddress() || addr.isSiteLocalAddress() || addr.isLinkLocalAddress();
+            // Without an allowlist, only local loopback clients may supply forwarding headers.
+            return addr.isLoopbackAddress();
         } catch (UnknownHostException e) {
             return false;
         }
