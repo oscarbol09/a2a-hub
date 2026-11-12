@@ -1,6 +1,14 @@
 server:
   port: 8081
 
+# Advertised task endpoint in /.well-known/agent-card.json.
+# Leave unset to derive it dynamically from the Host header of the incoming card
+# request, or pin it when the Host header cannot be trusted (Kubernetes/ECS):
+#   property: a2a.agent.base-url   |   env var: A2A_AGENT_BASE_URL
+# a2a:
+#   agent:
+#     base-url: http://weather-agent:8081
+
 spring:
   application:
     name: weather-agent

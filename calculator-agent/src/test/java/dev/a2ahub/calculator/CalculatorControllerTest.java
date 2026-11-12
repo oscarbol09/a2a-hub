@@ -64,7 +64,9 @@ class CalculatorControllerTest {
     @Test
     @DisplayName("GET /.well-known/agent-card.json returns A2A v1.0 standard Agent Card")
     void getAgentCard_returnsA2Av1StandardCard() throws Exception {
-        mockMvc.perform(get("/.well-known/agent-card.json")
+        // Simulates a Hub registering the locally-running agent at http://localhost:8082:
+        // the Host header of the card request must be mirrored into supportedInterfaces.
+        mockMvc.perform(get("http://localhost:8082/.well-known/agent-card.json")
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.name").value("CalculatorAgent"))
@@ -72,7 +74,7 @@ class CalculatorControllerTest {
                 .andExpect(jsonPath("$.description").value("Mathematical analysis, equation solving, and numerical reasoning assistant"))
                 .andExpect(jsonPath("$.capabilities.streaming").value(false))
                 .andExpect(jsonPath("$.capabilities.pushNotifications").value(false))
-                .andExpect(jsonPath("$.supportedInterfaces[0].url").value("http://calculator-agent:8082/tasks"))
+                .andExpect(jsonPath("$.supportedInterfaces[0].url").value("http://localhost:8082/tasks"))
                 .andExpect(jsonPath("$.supportedInterfaces[0].protocolBinding").value("HTTP+JSON"))
                 .andExpect(jsonPath("$.supportedInterfaces[0].protocolVersion").value("1.0"))
                 .andExpect(jsonPath("$.skills[0].id").value("math"))
@@ -81,6 +83,45 @@ class CalculatorControllerTest {
                 .andExpect(jsonPath("$.skills[0].tags[0]").value("math"))
                 .andExpect(jsonPath("$.skills[0].tags[1]").value("calculator"))
                 .andExpect(jsonPath("$.skills[0].tags[2]").value("arithmetic"));
+    }
+
+    @Test
+    @DisplayName("GET /.well-known/agent-card.json mirrors request scheme, host, and port into supportedInterfaces")
+    void getAgentCard_derivesEndpointUrlFromRequest() throws Exception {
+        // Kubernetes/LB-style fetch: the advertised endpoint mirrors the fetch address.
+        mockMvc.perform(get("https://calc-abc123.us-east-1.elb.amazonaws.com:8443/.well-known/agent-card.json")
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.supportedInterfaces[0].url").value("https://calc-abc123.us-east-1.elb.amazonaws.com:8443/tasks"));
+    }
+
+    @Test
+    @DisplayName("a2a.agent.base-url pins the advertised task endpoint regardless of Host header; default ports are stripped")
+    void getAgentCard_configuredBaseUrlOverridesRequestDerivation() {
+        org.springframework.mock.env.MockEnvironment testEnv = new org.springframework.mock.env.MockEnvironment();
+        testEnv.setActiveProfiles("test");
+        CalculatorController controller = new CalculatorController("mock-dev-key", "gemini-3.8-flash", null, testEnv, "http://calculator-agent:8082/");
+
+        org.springframework.mock.web.MockHttpServletRequest request = new org.springframework.mock.web.MockHttpServletRequest();
+        request.setScheme("http");
+        request.setServerName("localhost");
+        request.setServerPort(9999);
+
+        @SuppressWarnings("unchecked")
+        java.util.List<java.util.Map<String, Object>> interfaces =
+                (java.util.List<java.util.Map<String, Object>>) controller.getAgentCard(request).get("supportedInterfaces");
+        assertEquals("http://calculator-agent:8082/tasks", interfaces.get(0).get("url"));
+
+        // Default ports (80/443) are stripped from dynamically derived endpoints.
+        CalculatorController derivedController = new CalculatorController("mock-dev-key", "gemini-3.8-flash");
+        org.springframework.mock.web.MockHttpServletRequest http80 = new org.springframework.mock.web.MockHttpServletRequest();
+        http80.setScheme("http");
+        http80.setServerName("calc.example.internal");
+        http80.setServerPort(80);
+        @SuppressWarnings("unchecked")
+        java.util.List<java.util.Map<String, Object>> httpInterfaces =
+                (java.util.List<java.util.Map<String, Object>>) derivedController.getAgentCard(http80).get("supportedInterfaces");
+        assertEquals("http://calc.example.internal/tasks", httpInterfaces.get(0).get("url"));
     }
 
     @Test
