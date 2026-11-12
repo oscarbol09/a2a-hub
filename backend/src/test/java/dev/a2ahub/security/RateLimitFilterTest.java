@@ -115,11 +115,13 @@ class RateLimitFilterTest {
     @Test
     @DisplayName("Should parse client IP from X-Forwarded-For header when behind trusted reverse proxy")
     void shouldParseClientIpFromXForwardedFor() throws ServletException, IOException {
-        RateLimitFilter filter = new RateLimitFilter(1, 60, objectMapper);
+        SecurityProperties props = new SecurityProperties();
+        props.getRateLimit().setTrustedProxies(List.of("10.0.0.0/24"));
+        RateLimitFilter filter = new RateLimitFilter(1, 60, 10_000, objectMapper, props);
 
         MockHttpServletRequest req1 = new MockHttpServletRequest("POST", "/api/v1/tasks");
         req1.addHeader("X-Forwarded-For", "203.0.113.195, 70.41.3.18, 150.172.238.178");
-        req1.setRemoteAddr("10.0.0.1"); // Load balancer IP (site-local trusted)
+        req1.setRemoteAddr("10.0.0.1"); // Explicitly configured load balancer CIDR
         MockHttpServletResponse res1 = new MockHttpServletResponse();
         filter.doFilterInternal(req1, res1, filterChain);
         assertThat(res1.getStatus()).isEqualTo(HttpStatus.OK.value());
@@ -131,6 +133,60 @@ class RateLimitFilterTest {
         MockHttpServletResponse res2 = new MockHttpServletResponse();
         filter.doFilterInternal(req2, res2, filterChain);
         assertThat(res2.getStatus()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS.value());
+    }
+
+    @Test
+    @DisplayName("Should ignore spoofed X-Forwarded-For from unconfigured private or link-local clients")
+    void shouldRejectSpoofedForwardingFromPrivateNetworks() throws ServletException, IOException {
+        for (String remote : List.of("10.1.2.3", "172.18.0.12", "192.168.10.8", "169.254.1.4")) {
+            RateLimitFilter filter = new RateLimitFilter(1, 60, objectMapper);
+
+            MockHttpServletRequest first = new MockHttpServletRequest("POST", "/api/v1/tasks");
+            first.setRemoteAddr(remote);
+            first.addHeader("X-Forwarded-For", "203.0.113.10");
+            MockHttpServletResponse firstResponse = new MockHttpServletResponse();
+            filter.doFilterInternal(first, firstResponse, filterChain);
+            assertThat(firstResponse.getStatus()).as(remote).isEqualTo(HttpStatus.OK.value());
+            assertThat(filter.extractClientIp(first)).as(remote).isEqualTo(remote);
+
+            MockHttpServletRequest second = new MockHttpServletRequest("POST", "/api/v1/tasks");
+            second.setRemoteAddr(remote);
+            second.addHeader("X-Forwarded-For", "203.0.113.11");
+            MockHttpServletResponse secondResponse = new MockHttpServletResponse();
+            filter.doFilterInternal(second, secondResponse, filterChain);
+            assertThat(secondResponse.getStatus()).as(remote).isEqualTo(HttpStatus.TOO_MANY_REQUESTS.value());
+        }
+    }
+
+    @Test
+    @DisplayName("Should accept X-Forwarded-For from loopback when no proxies are configured")
+    void shouldTrustLoopbackByDefault() {
+        RateLimitFilter filter = new RateLimitFilter(1, 60, objectMapper);
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/agents");
+        request.setRemoteAddr("127.0.0.1");
+        request.addHeader("X-Forwarded-For", "203.0.113.33");
+
+        assertThat(filter.extractClientIp(request)).isEqualTo("203.0.113.33");
+    }
+
+    @Test
+    @DisplayName("A nonempty proxy allowlist should reject every unlisted peer, including loopback")
+    void shouldRequireConfiguredProxyMembership() {
+        SecurityProperties props = new SecurityProperties();
+        props.getRateLimit().setTrustedProxies(List.of("10.0.0.5"));
+        RateLimitFilter filter = new RateLimitFilter(1, 60, 10_000, objectMapper, props);
+
+        MockHttpServletRequest allowed = new MockHttpServletRequest("GET", "/api/v1/agents");
+        allowed.setRemoteAddr("10.0.0.5");
+        allowed.addHeader("X-Forwarded-For", "203.0.113.33");
+        assertThat(filter.extractClientIp(allowed)).isEqualTo("203.0.113.33");
+
+        for (String remote : List.of("10.0.0.6", "127.0.0.1", "169.254.1.1")) {
+            MockHttpServletRequest blocked = new MockHttpServletRequest("GET", "/api/v1/agents");
+            blocked.setRemoteAddr(remote);
+            blocked.addHeader("X-Forwarded-For", "203.0.113.34");
+            assertThat(filter.extractClientIp(blocked)).as(remote).isEqualTo(remote);
+        }
     }
 
     @Test
