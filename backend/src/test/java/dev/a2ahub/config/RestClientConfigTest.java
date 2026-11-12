@@ -1,5 +1,6 @@
 package dev.a2ahub.config;
 
+import com.sun.net.httpserver.HttpServer;
 import dev.a2ahub.agent.AgentRepository;
 import dev.a2ahub.events.AgentEventPublisher;
 import dev.a2ahub.security.SecurityProperties;
@@ -19,8 +20,11 @@ import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.net.UnknownHostException;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.concurrent.*;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -126,4 +130,206 @@ class RestClientConfigTest {
         assertThat(addresses).isNotEmpty();
         assertThat(addresses[0].getHostAddress()).isEqualTo(publicIp);
     }
+
+    @Test
+    @DisplayName("Should allow more than 5 concurrent connections to the same route")
+    void shouldAllowMoreThanFiveConcurrentConnectionsPerRoute() throws Exception {
+
+        securityProperties.getSsrf().setAllowPrivateNetworks(true);
+
+        int concurrentRequests = 42;
+
+        CountDownLatch arrivals = new CountDownLatch(concurrentRequests);
+        CountDownLatch releaseRequests = new CountDownLatch(1);
+
+        ExecutorService serverExecutor = Executors.newCachedThreadPool();
+        ExecutorService clientExecutor = Executors.newVirtualThreadPerTaskExecutor();
+
+        HttpServer server = HttpServer.create(
+                new InetSocketAddress("127.0.0.1", 0),
+                0
+        );
+
+        server.setExecutor(serverExecutor);
+
+        server.createContext("/test", exchange -> {
+            arrivals.countDown();
+
+            try {
+                boolean released = releaseRequests.await(10, TimeUnit.SECONDS);
+
+                if (!released) {
+                    exchange.sendResponseHeaders(500, -1);
+                    return;
+                }
+
+                byte[] response = "OK".getBytes(StandardCharsets.UTF_8);
+
+                exchange.sendResponseHeaders(200, response.length);
+
+                try (var responseBody = exchange.getResponseBody()) {
+                    responseBody.write(response);
+                }
+
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } finally {
+                exchange.close();
+            }
+        });
+
+        server.start();
+
+        try {
+            String url = "http://127.0.0.1:"
+                    + server.getAddress().getPort()
+                    + "/test";
+
+            RestClient client = config.restClientBuilder().build();
+
+            CompletableFuture<?>[] requests = new CompletableFuture<?>[concurrentRequests];
+
+            for (int i = 0; i < concurrentRequests; i++) {
+                requests[i] = CompletableFuture.runAsync(
+                        () -> client.get()
+                                .uri(url)
+                                .retrieve()
+                                .toBodilessEntity(),
+                        clientExecutor
+                );
+            }
+
+            boolean allConnectionsReachedServer =
+                    arrivals.await(2, TimeUnit.SECONDS);
+
+            releaseRequests.countDown();
+
+            assertThat(allConnectionsReachedServer)
+                    .as("All 42 requests should reach the server concurrently")
+                    .isTrue();
+
+            CompletableFuture.allOf(requests)
+                    .get(10, TimeUnit.SECONDS);
+
+        } finally {
+            releaseRequests.countDown();
+
+            server.stop(0);
+            clientExecutor.shutdownNow();
+            serverExecutor.shutdownNow();
+        }
+    }
+
+    @Test
+    @DisplayName("Should allow 200 concurrent connections across 4 different routes")
+    void shouldAllow200ConcurrentConnectionsAcrossMultipleRoutes() throws Exception {
+
+        securityProperties.getSsrf().setAllowPrivateNetworks(true);
+
+        int routeCount = 4;
+        int requestsPerRoute = 50;
+        int concurrentRequests = routeCount * requestsPerRoute;
+
+        CountDownLatch arrivals = new CountDownLatch(concurrentRequests);
+        CountDownLatch releaseRequests = new CountDownLatch(1);
+
+        ExecutorService serverExecutor = Executors.newCachedThreadPool();
+        ExecutorService clientExecutor = Executors.newVirtualThreadPerTaskExecutor();
+
+        HttpServer[] servers = new HttpServer[routeCount];
+        String[] urls = new String[routeCount];
+
+        try {
+            // Create 4 different routes using 4 different ports.
+            for (int i = 0; i < routeCount; i++) {
+
+                HttpServer server = HttpServer.create(
+                        new InetSocketAddress("127.0.0.1", 0),
+                        0
+                );
+
+                server.setExecutor(serverExecutor);
+
+                server.createContext("/test", exchange -> {
+                    arrivals.countDown();
+
+                    try {
+                        boolean released = releaseRequests.await(10, TimeUnit.SECONDS);
+
+                        if (!released) {
+                            exchange.sendResponseHeaders(500, -1);
+                            return;
+                        }
+
+                        byte[] response = "OK".getBytes(StandardCharsets.UTF_8);
+
+                        exchange.sendResponseHeaders(200, response.length);
+
+                        try (var responseBody = exchange.getResponseBody()) {
+                            responseBody.write(response);
+                        }
+
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        exchange.sendResponseHeaders(500, -1);
+                    } finally {
+                        exchange.close();
+                    }
+                });
+
+                server.start();
+
+                servers[i] = server;
+
+                urls[i] = "http://127.0.0.1:"
+                        + server.getAddress().getPort()
+                        + "/test";
+            }
+
+            RestClient client = config.restClientBuilder().build();
+
+            CompletableFuture<?>[] requests =
+                    new CompletableFuture<?>[concurrentRequests];
+
+            // Send 50 requests to each of the 4 routes.
+            for (int i = 0; i < concurrentRequests; i++) {
+
+                int routeIndex = i / requestsPerRoute;
+
+                requests[i] = CompletableFuture.runAsync(
+                        () -> client.get()
+                                .uri(urls[routeIndex])
+                                .retrieve()
+                                .toBodilessEntity(),
+                        clientExecutor
+                );
+            }
+
+            boolean allConnectionsReachedServer =
+                    arrivals.await(10, TimeUnit.SECONDS);
+
+            releaseRequests.countDown();
+
+            assertThat(allConnectionsReachedServer)
+                    .as("All 200 requests should reach 4 different routes concurrently")
+                    .isTrue();
+
+            CompletableFuture.allOf(requests)
+                    .get(15, TimeUnit.SECONDS);
+
+        } finally {
+
+            releaseRequests.countDown();
+
+            for (HttpServer server : servers) {
+                if (server != null) {
+                    server.stop(0);
+                }
+            }
+
+            clientExecutor.shutdownNow();
+            serverExecutor.shutdownNow();
+        }
+    }
+
 }
