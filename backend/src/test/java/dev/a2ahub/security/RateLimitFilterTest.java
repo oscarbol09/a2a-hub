@@ -33,6 +33,47 @@ class RateLimitFilterTest {
     }
 
     @Test
+    @DisplayName("Disabling rate limits bypasses bucket allocation and never returns HTTP 429")
+    void shouldBypassRateLimitWhenDisabled() throws ServletException, IOException {
+        SecurityProperties props = new SecurityProperties();
+        props.getRateLimit().setEnabled(false);
+        RateLimitFilter filter = new RateLimitFilter(1, 60, 10_000, objectMapper, props);
+
+        for (int i = 0; i < 3; i++) {
+            MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/tasks");
+            request.setRemoteAddr("198.51.100.42");
+            MockHttpServletResponse response = new MockHttpServletResponse();
+
+            filter.doFilterInternal(request, response, filterChain);
+
+            assertThat(response.getStatus()).isEqualTo(HttpStatus.OK.value());
+            assertThat(response.getHeader("Retry-After")).isNull();
+        }
+
+        verify(filterChain, times(3)).doFilter(any(), any());
+        assertThat(filter.getBucketCount()).isZero();
+    }
+
+    @Test
+    @DisplayName("Explicit enabled setting retains configured token limits")
+    void shouldEnforceRateLimitWhenEnabled() throws ServletException, IOException {
+        SecurityProperties props = new SecurityProperties();
+        props.getRateLimit().setEnabled(true);
+        RateLimitFilter filter = new RateLimitFilter(1, 60, 10_000, objectMapper, props);
+
+        for (int i = 0; i < 2; i++) {
+            MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/tasks");
+            request.setRemoteAddr("198.51.100.42");
+            MockHttpServletResponse response = new MockHttpServletResponse();
+            filter.doFilterInternal(request, response, filterChain);
+            assertThat(response.getStatus()).isEqualTo(i == 0 ? HttpStatus.OK.value() : HttpStatus.TOO_MANY_REQUESTS.value());
+        }
+
+        verify(filterChain, times(1)).doFilter(any(), any());
+        assertThat(filter.getBucketCount()).isEqualTo(1);
+    }
+
+    @Test
     @DisplayName("Should allow requests within configured token bucket limit")
     void shouldAllowRequestsWithinLimit() throws ServletException, IOException {
         RateLimitFilter filter = new RateLimitFilter(5, 60, objectMapper);
