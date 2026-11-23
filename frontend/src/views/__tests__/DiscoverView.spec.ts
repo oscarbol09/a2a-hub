@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
+import { AxiosHeaders, type AxiosResponse } from 'axios';
 import DiscoverView from '../DiscoverView.vue';
 import { discoveryApi, type Agent, type SkillSummary, type TagSummary } from '../../services/api';
 
@@ -64,6 +65,25 @@ const mockTags: TagSummary[] = [
   { tag: 'weather', count: 1 },
   { tag: 'finance', count: 1 },
 ];
+
+function pendingAgentResponse() {
+  let resolveResponse!: (response: AxiosResponse<Agent[]>) => void;
+  const promise = new Promise<AxiosResponse<Agent[]>>(resolve => {
+    resolveResponse = resolve;
+  });
+  return {
+    promise,
+    resolve(data: Agent[]) {
+      resolveResponse({
+        data,
+        status: 200,
+        statusText: 'OK',
+        headers: {},
+        config: { headers: new AxiosHeaders() },
+      });
+    },
+  };
+}
 
 describe('DiscoverView Component', () => {
   beforeEach(() => {
@@ -189,6 +209,48 @@ describe('DiscoverView Component', () => {
       expect(discoverSpy).toHaveBeenCalledWith(
         expect.objectContaining({ q: undefined })
       );
+      vi.advanceTimersByTime(300);
+      await flushPromises();
+      expect(discoverSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not dispatch a pending search after leaving discovery', async () => {
+      const discoverSpy = vi.spyOn(discoveryApi, 'discover').mockResolvedValue({ data: [mockAgent1] } as any);
+      vi.spyOn(discoveryApi, 'getSkills').mockResolvedValue({ data: mockSkills } as any);
+      vi.spyOn(discoveryApi, 'getTags').mockResolvedValue({ data: mockTags } as any);
+
+      const wrapper = mount(DiscoverView);
+      await flushPromises();
+      discoverSpy.mockClear();
+
+      await wrapper.get('input[type="text"]').setValue('weather forecast');
+      wrapper.unmount();
+      vi.advanceTimersByTime(300);
+
+      expect(discoverSpy).not.toHaveBeenCalled();
+    });
+
+    it('ignores an older query that finishes while new input is debouncing', async () => {
+      const discoverSpy = vi.spyOn(discoveryApi, 'discover').mockResolvedValue({ data: [] } as any);
+      vi.spyOn(discoveryApi, 'getSkills').mockResolvedValue({ data: mockSkills } as any);
+      vi.spyOn(discoveryApi, 'getTags').mockResolvedValue({ data: mockTags } as any);
+      const older = pendingAgentResponse();
+      const wrapper = mount(DiscoverView);
+      await flushPromises();
+      discoverSpy.mockReturnValueOnce(older.promise).mockResolvedValueOnce({ data: [mockAgent2] } as any);
+
+      const input = wrapper.get('input[type="text"]');
+      await input.setValue('weather');
+      vi.advanceTimersByTime(300);
+      await input.setValue('finance');
+      older.resolve([mockAgent1]);
+      await flushPromises();
+
+      expect(wrapper.text()).not.toContain('WeatherAgent');
+      vi.advanceTimersByTime(300);
+      await flushPromises();
+      expect(wrapper.text()).toContain('FinanceAgent');
+      wrapper.unmount();
     });
   });
 
@@ -418,6 +480,50 @@ describe('DiscoverView Component', () => {
   });
 
   describe('Semantic Vector Search Mode & Visual Similarity Scores', () => {
+    it('clears keyword filters when changing to semantic search', async () => {
+      const discoverSpy = vi.spyOn(discoveryApi, 'discover').mockResolvedValue({ data: [mockAgent1] } as any);
+      vi.spyOn(discoveryApi, 'discoverSemantic').mockResolvedValue({ data: [mockAgent2] } as any);
+      vi.spyOn(discoveryApi, 'getSkills').mockResolvedValue({ data: mockSkills } as any);
+      vi.spyOn(discoveryApi, 'getTags').mockResolvedValue({ data: mockTags } as any);
+
+      const wrapper = mount(DiscoverView);
+      await flushPromises();
+      const badges = wrapper.findAllComponents({ name: 'SkillBadge' });
+      await badges.find(badge => badge.props('label') === 'Get Weather')!.trigger('click');
+      await badges.find(badge => badge.props('label') === '#weather')!.trigger('click');
+      await flushPromises();
+      expect(discoverSpy).toHaveBeenLastCalledWith(expect.objectContaining({ skill: 'get_weather', tag: 'weather' }));
+
+      const [keyword, semantic] = wrapper.findAll('[aria-label="Search mode"] button');
+      await semantic!.trigger('click');
+      await keyword!.trigger('click');
+      await flushPromises();
+
+      expect(discoverSpy).toHaveBeenLastCalledWith(expect.objectContaining({ skill: undefined, tag: undefined }));
+      wrapper.unmount();
+    });
+
+    it('keeps semantic results when the initial keyword results finish last', async () => {
+      const initial = pendingAgentResponse();
+      vi.spyOn(discoveryApi, 'discover').mockReturnValue(initial.promise);
+      vi.spyOn(discoveryApi, 'discoverSemantic').mockResolvedValue({ data: [mockAgent2] } as any);
+      vi.spyOn(discoveryApi, 'getSkills').mockResolvedValue({ data: mockSkills } as any);
+      vi.spyOn(discoveryApi, 'getTags').mockResolvedValue({ data: mockTags } as any);
+
+      const wrapper = mount(DiscoverView);
+      const [, semantic] = wrapper.findAll('[aria-label="Search mode"] button');
+      await semantic!.trigger('click');
+      await flushPromises();
+      expect(wrapper.text()).toContain('FinanceAgent');
+
+      initial.resolve([mockAgent1]);
+      await flushPromises();
+
+      expect(wrapper.text()).toContain('FinanceAgent');
+      expect(wrapper.text()).not.toContain('WeatherAgent');
+      wrapper.unmount();
+    });
+
     it('toggles between keyword and semantic search mode and updates active UI controls', async () => {
       const discoverSpy = vi.spyOn(discoveryApi, 'discover').mockResolvedValue({ data: [mockAgent1] } as any);
       const semanticSpy = vi.spyOn(discoveryApi, 'discoverSemantic').mockResolvedValue({ data: [mockAgent2] } as any);

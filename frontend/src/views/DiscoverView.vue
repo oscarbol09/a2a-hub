@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, onUnmounted } from 'vue';
 import { discoveryApi, type Agent, type SkillSummary, type TagSummary } from '../services/api';
 import AgentCardComponent from '../components/AgentCard.vue';
 import SkillBadge from '../components/SkillBadge.vue';
@@ -17,6 +17,8 @@ const selectedSkill = ref<string | null>(null);
 const selectedTag = ref<string | null>(null);
 
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+let searchRequestId = 0;
+let unmounted = false;
 
 const graduatedScores = [0.98, 0.94, 0.89, 0.85, 0.82, 0.78, 0.74, 0.71, 0.68, 0.65];
 
@@ -27,121 +29,118 @@ const calculateGraduatedScore = (index: number): number => {
   return Math.max(0.50, +(0.65 - (index - graduatedScores.length + 1) * 0.03).toFixed(2));
 };
 
-const fetchDiscoveryData = async () => {
+const clearDebounceTimer = () => {
+  if (debounceTimer !== null) {
+    clearTimeout(debounceTimer);
+    debounceTimer = null;
+  }
+};
+
+const runSearch = async (fetchAgents: () => Promise<Agent[]>, fallbackError: string) => {
+  clearDebounceTimer();
+  const requestId = ++searchRequestId;
   loading.value = true;
   error.value = null;
   try {
-    const [agentsRes, skillsRes, tagsRes] = await Promise.all([
-      discoveryApi.discover({
-        q: searchQuery.value || undefined,
-        skill: selectedSkill.value || undefined,
-        tag: selectedTag.value || undefined
-      }),
-      discoveryApi.getSkills(),
-      discoveryApi.getTags()
-    ]);
-    agents.value = agentsRes.data.map(agent => ({
-      ...agent,
-      similarityScore: undefined
-    }));
+    const results = await fetchAgents();
+    if (requestId === searchRequestId) agents.value = results;
+  } catch (err) {
+    if (requestId === searchRequestId) {
+      const response = (err as { response?: { data?: { message?: string } } } | null)?.response;
+      error.value = response?.data?.message || fallbackError;
+    }
+  } finally {
+    if (requestId === searchRequestId) loading.value = false;
+  }
+};
+
+const fetchKeywordAgents = async () => {
+  const res = await discoveryApi.discover({
+    q: searchQuery.value || undefined,
+    skill: selectedSkill.value || undefined,
+    tag: selectedTag.value || undefined
+  });
+  return res.data.map(agent => ({ ...agent, similarityScore: undefined }));
+};
+
+const fetchCatalog = async () => {
+  const [skillsRes, tagsRes] = await Promise.all([discoveryApi.getSkills(), discoveryApi.getTags()]);
+  if (!unmounted) {
     skills.value = skillsRes.data;
     tags.value = tagsRes.data;
-  } catch (err: any) {
-    error.value = err.response?.data?.message || 'Failed to load discovery data';
-  } finally {
-    loading.value = false;
   }
 };
 
-const executeSearch = async () => {
-  loading.value = true;
-  error.value = null;
-  try {
-    const res = await discoveryApi.discover({
-      q: searchQuery.value || undefined,
-      skill: selectedSkill.value || undefined,
-      tag: selectedTag.value || undefined
-    });
-    agents.value = res.data.map(agent => ({
-      ...agent,
-      similarityScore: undefined
-    }));
-  } catch (err: any) {
-    error.value = err.response?.data?.message || 'Discovery search failed';
-  } finally {
-    loading.value = false;
-  }
-};
+const fetchDiscoveryData = () => runSearch(async () => {
+  const [results] = await Promise.all([fetchKeywordAgents(), fetchCatalog()]);
+  return results;
+}, 'Failed to load discovery data');
 
-const executeSemanticSearch = async () => {
-  loading.value = true;
-  error.value = null;
-  try {
-    const res = await discoveryApi.discoverSemantic(searchQuery.value);
-    agents.value = res.data.map((agent, index) => ({
-      ...agent,
-      similarityScore: agent.similarityScore ?? calculateGraduatedScore(index)
-    }));
-  } catch (err: any) {
-    error.value = err.response?.data?.message || 'Semantic discovery search failed';
-  } finally {
-    loading.value = false;
-  }
+const executeSearch = () => runSearch(fetchKeywordAgents, 'Discovery search failed');
+
+const executeSemanticSearch = () => runSearch(async () => {
+  const res = await discoveryApi.discoverSemantic(searchQuery.value);
+  return res.data.map((agent, index) => ({
+    ...agent,
+    similarityScore: agent.similarityScore ?? calculateGraduatedScore(index)
+  }));
+}, 'Semantic discovery search failed');
+
+const searchInCurrentMode = () => {
+  return searchMode.value === 'semantic' ? executeSemanticSearch() : executeSearch();
 };
 
 const setSearchMode = (mode: 'keyword' | 'semantic') => {
   if (searchMode.value === mode) return;
   searchMode.value = mode;
   if (mode === 'semantic') {
-    executeSemanticSearch();
-  } else {
-    executeSearch();
+    selectedSkill.value = null;
+    selectedTag.value = null;
   }
+  return searchInCurrentMode();
 };
 
 const onSearchInput = () => {
-  if (debounceTimer) clearTimeout(debounceTimer);
-  debounceTimer = setTimeout(() => {
-    if (searchMode.value === 'semantic') {
-      executeSemanticSearch();
-    } else {
-      executeSearch();
-    }
-  }, 300);
+  clearDebounceTimer();
+  // Invalidate the old response immediately, including during the debounce window.
+  searchRequestId++;
+  loading.value = true;
+  error.value = null;
+  debounceTimer = setTimeout(searchInCurrentMode, 300);
 };
 
 const toggleSkillFilter = (skillId: string) => {
+  searchMode.value = 'keyword';
   selectedSkill.value = selectedSkill.value === skillId ? null : skillId;
   executeSearch();
 };
 
 const toggleTagFilter = (tag: string) => {
+  searchMode.value = 'keyword';
   selectedTag.value = selectedTag.value === tag ? null : tag;
   executeSearch();
 };
 
 const handleClearSearch = () => {
   searchQuery.value = '';
-  if (searchMode.value === 'semantic') {
-    executeSemanticSearch();
-  } else {
-    executeSearch();
-  }
+  searchInCurrentMode();
 };
 
 const clearAllFilters = () => {
   searchQuery.value = '';
   selectedSkill.value = null;
   selectedTag.value = null;
-  if (searchMode.value === 'semantic') {
-    executeSemanticSearch();
-  } else {
-    executeSearch();
-  }
+  searchInCurrentMode();
 };
 
 onMounted(() => {
   fetchDiscoveryData();
+});
+
+onUnmounted(() => {
+  unmounted = true;
+  clearDebounceTimer();
+  searchRequestId++;
 });
 
 defineExpose({
