@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
+import type { Agent } from '../services/api';
 import { useAgentStore } from '../stores/agentStore';
 import AgentCardComponent from '../components/AgentCard.vue';
 import { Search, Plus, Zap, CheckCircle2, AlertTriangle, XCircle, Radio } from 'lucide-vue-next';
@@ -35,6 +36,12 @@ const handleRegister = async () => {
   } else {
     registrationError.value = store.error;
     store.error = null;
+  }
+};
+
+const handleUnregister = async (agent: Agent) => {
+  if (window.confirm(`Unregister "${agent.name}" and remove its registered skills?`)) {
+    await store.unregisterAgent(agent.id);
   }
 };
 </script>
@@ -129,7 +136,7 @@ const handleRegister = async () => {
         v-for="agent in store.agents" 
         :key="agent.id" 
         :agent="agent"
-        @unregister="store.unregisterAgent(agent.id)"
+        @unregister="handleUnregister(agent)"
         @probe="store.triggerHealthProbe"
       />
     </div>
