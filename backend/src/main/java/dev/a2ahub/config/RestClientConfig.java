@@ -9,9 +9,10 @@ import org.apache.hc.client5.http.impl.classic.HttpClientBuilder;
 import org.apache.hc.client5.http.impl.classic.HttpClients;
 import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManager;
 import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManagerBuilder;
+import org.apache.hc.client5.http.ssl.DefaultClientTlsStrategy;
 import org.apache.hc.client5.http.ssl.DefaultHostnameVerifier;
-import org.apache.hc.client5.http.ssl.SSLConnectionSocketFactory;
-import org.apache.hc.client5.http.ssl.SSLConnectionSocketFactoryBuilder;
+import org.apache.hc.client5.http.ssl.HostnameVerificationPolicy;
+import org.apache.hc.core5.ssl.SSLContexts;
 import org.apache.hc.core5.util.Timeout;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -84,13 +85,12 @@ public class RestClientConfig {
             }
         };
 
-        SSLConnectionSocketFactory sslSocketFactory = SSLConnectionSocketFactoryBuilder.create()
-                .setHostnameVerifier(new DefaultHostnameVerifier())
-                .build();
+        DefaultClientTlsStrategy tlsStrategy = new DefaultClientTlsStrategy(
+                SSLContexts.createDefault(), HostnameVerificationPolicy.CLIENT, new DefaultHostnameVerifier());
 
         PoolingHttpClientConnectionManager connectionManager = PoolingHttpClientConnectionManagerBuilder.create()
                 .setDnsResolver(dnsResolver)
-                .setSSLSocketFactory(sslSocketFactory)
+                .setTlsSocketStrategy(tlsStrategy)
                 .setMaxConnTotal(200)
                 .setMaxConnPerRoute(50)
                 .setDefaultConnectionConfig(ConnectionConfig.custom()
