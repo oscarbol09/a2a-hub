@@ -173,6 +173,17 @@ describe('AgentDetailView Component', () => {
       expect(wrapper.text()).toContain('Agent health record not found in database');
     });
 
+    it('renders the ProblemDetail explanation when fetching health history fails', async () => {
+      vi.spyOn(healthApi, 'getAgentHealth').mockRejectedValue({
+        response: { data: { detail: 'The requested agent is no longer registered' } },
+      });
+
+      const wrapper = mount(AgentDetailView);
+      await flushPromises();
+
+      expect(wrapper.text()).toContain('The requested agent is no longer registered');
+    });
+
     it('renders fallback error message when fetchHealthHistory fails with generic exception', async () => {
       vi.spyOn(healthApi, 'getAgentHealth').mockRejectedValue(new Error('Network error'));
 

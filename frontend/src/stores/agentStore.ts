@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import { api, healthApi, type Agent, type AgentStatusEvent, type HubHealthStats } from '../services/api';
+import { getApiErrorMessage } from '../services/apiError';
 import { wsService } from '../services/websocket';
 import { ref } from 'vue';
 
@@ -27,8 +28,8 @@ export const useAgentStore = defineStore('agents', () => {
     try {
       const response = await api.get<Agent[]>('/agents');
       agents.value = response.data;
-    } catch (err: any) {
-      error.value = err.response?.data?.message || 'Failed to fetch agents';
+    } catch (err) {
+      error.value = getApiErrorMessage(err, 'Failed to fetch agents');
     } finally {
       loading.value = false;
     }
@@ -63,8 +64,8 @@ export const useAgentStore = defineStore('agents', () => {
       upsertAgent(response.data);
       fetchHubStats();
       return true;
-    } catch (err: any) {
-      error.value = err.response?.data?.message || 'Failed to register agent';
+    } catch (err) {
+      error.value = getApiErrorMessage(err, 'Failed to register agent');
       return false;
     } finally {
       loading.value = false;
@@ -76,8 +77,8 @@ export const useAgentStore = defineStore('agents', () => {
       await api.delete(`/agents/${id}`);
       agents.value = agents.value.filter(a => a.id !== id);
       fetchHubStats();
-    } catch (err: any) {
-      error.value = err.response?.data?.message || 'Failed to unregister agent';
+    } catch (err) {
+      error.value = getApiErrorMessage(err, 'Failed to unregister agent');
     }
   };
 
@@ -92,8 +93,8 @@ export const useAgentStore = defineStore('agents', () => {
       }
       fetchHubStats();
       return res.data;
-    } catch (err: any) {
-      error.value = err.response?.data?.message || 'Health probe failed';
+    } catch (err) {
+      error.value = getApiErrorMessage(err, 'Health probe failed');
       throw err;
     }
   };

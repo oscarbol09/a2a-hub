@@ -2,6 +2,7 @@
 import { ref, onMounted, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { healthApi, type AgentHealthResponse } from '../services/api';
+import { getApiErrorMessage } from '../services/apiError';
 import { useAgentStore } from '../stores/agentStore';
 import {
   ArrowLeft,
@@ -29,8 +30,8 @@ const fetchHealthHistory = async () => {
   try {
     const res = await healthApi.getAgentHealth(agentId, 30);
     healthData.value = res.data;
-  } catch (err: any) {
-    error.value = err.response?.data?.message || 'Failed to fetch agent health data';
+  } catch (err) {
+    error.value = getApiErrorMessage(err, 'Failed to fetch agent health data');
   } finally {
     loading.value = false;
   }
@@ -41,8 +42,8 @@ const triggerProbe = async () => {
   try {
     await store.triggerHealthProbe(agentId);
     await fetchHealthHistory();
-  } catch (err: any) {
-    error.value = err.response?.data?.message || 'Manual probe failed';
+  } catch (err) {
+    error.value = getApiErrorMessage(err, 'Manual probe failed');
   } finally {
     probing.value = false;
   }
