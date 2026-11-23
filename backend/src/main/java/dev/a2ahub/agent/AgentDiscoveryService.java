@@ -131,9 +131,8 @@ public class AgentDiscoveryService {
             skillMap.computeIfAbsent(key, k -> new SkillSummaryBuilder(
                     k,
                     s.name(),
-                    s.description(),
-                    new HashSet<>(s.tags() != null ? s.tags() : List.of())
-            )).addAgent(s.agentId());
+                    s.description()
+            )).addProjection(s);
         }
 
         return skillMap.values().stream()
@@ -168,19 +167,21 @@ public class AgentDiscoveryService {
         private final String skillId;
         private final String name;
         private final String description;
-        private final Set<String> tags;
+        private final Set<String> tags = new HashSet<>();
         private final Set<UUID> agentIds = new HashSet<>();
 
-        public SkillSummaryBuilder(String skillId, String name, String description, Set<String> tags) {
+        public SkillSummaryBuilder(String skillId, String name, String description) {
             this.skillId = skillId;
             this.name = name;
             this.description = description;
-            this.tags = tags;
         }
 
-        public void addAgent(UUID agentId) {
-            if (agentId != null) {
-                this.agentIds.add(agentId);
+        public void addProjection(AgentSkillRepository.SkillAgentProjection skill) {
+            if (skill.tags() != null) {
+                tags.addAll(skill.tags());
+            }
+            if (skill.agentId() != null) {
+                agentIds.add(skill.agentId());
             }
         }
 

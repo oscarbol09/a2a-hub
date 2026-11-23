@@ -8,6 +8,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.parallel.ResourceLock;
+import org.junit.jupiter.api.parallel.Resources;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.PageImpl;
@@ -16,6 +20,7 @@ import org.springframework.web.client.RestClient;
 
 import java.net.URI;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -59,6 +64,9 @@ class AgentRegistryServiceTest {
 
     @Mock
     private RestClient.ResponseSpec responseSpec;
+
+    @Captor
+    private ArgumentCaptor<List<AgentSkillEntity>> savedSkills;
 
     private AgentRegistryService agentRegistryService;
 
@@ -128,6 +136,33 @@ class AgentRegistryServiceTest {
         verify(embeddingService).generateAgentEmbedding(card);
         verify(agentRepository).updateEmbedding(agentId, "[0.1,0.2]");
         verify(eventPublisher).publishAgentRegistered(savedAgent);
+    }
+
+    @Test
+    @ResourceLock(Resources.LOCALE)
+    void shouldPersistUnnamedSkillsWithDistinctIdsAndNormalizeNamedSkills() {
+        String url = "https://agent.example.com";
+        AgentCard card = new AgentCard("Agent", "Example", url, "1.0.0", List.of(
+                new AgentCard.Skill(null, null, "First skill", List.of("first")),
+                new AgentCard.Skill(" ", " ", "Second skill", null),
+                new AgentCard.Skill(null, "INDEX Search", null, null)
+        ), Map.of(), List.of());
+        when(agentRepository.save(any(Agent.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        Locale previous = Locale.getDefault();
+        try {
+            Locale.setDefault(Locale.forLanguageTag("tr"));
+            agentRegistryService.persistRegisteredAgent(url, card, null);
+        } finally {
+            Locale.setDefault(previous);
+        }
+
+        verify(agentSkillRepository).saveAll(savedSkills.capture());
+        assertThat(savedSkills.getValue()).extracting(AgentSkillEntity::getName)
+                .containsExactly("Unnamed Skill", "Unnamed Skill", "INDEX Search");
+        assertThat(savedSkills.getValue()).extracting(AgentSkillEntity::getSkillId)
+                .doesNotContainNull().doesNotHaveDuplicates().endsWith("index_search");
+        assertThat(savedSkills.getValue().getFirst().getTags()).containsExactly("first");
     }
 
     @Test

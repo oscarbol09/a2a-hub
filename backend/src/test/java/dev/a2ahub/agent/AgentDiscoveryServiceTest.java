@@ -186,6 +186,23 @@ class AgentDiscoveryServiceTest {
     }
 
     @Test
+    void shouldMergeDistinctTagsForASharedSkill() {
+        when(agentSkillRepository.findAllSkillProjections()).thenReturn(List.of(
+                new AgentSkillRepository.SkillAgentProjection(
+                        "search", "Search", null, List.of("query", "weather"), weatherAgent.getId()),
+                new AgentSkillRepository.SkillAgentProjection(
+                        "search", "Search", null, List.of("query", "math"), calculatorAgent.getId()),
+                new AgentSkillRepository.SkillAgentProjection(
+                        "search", "Search", null, null, UUID.randomUUID())
+        ));
+
+        assertThat(discoveryService.getDistinctSkills()).singleElement().satisfies(skill -> {
+            assertThat(skill.tags()).containsExactlyInAnyOrder("query", "weather", "math");
+            assertThat(skill.agentCount()).isEqualTo(3);
+        });
+    }
+
+    @Test
     @DisplayName("Should aggregate distinct tags from PostgreSQL projection")
     void shouldGetDistinctTags() {
         AgentSkillRepository.TagCountProjection p1 = new AgentSkillRepository.TagCountProjection() {
