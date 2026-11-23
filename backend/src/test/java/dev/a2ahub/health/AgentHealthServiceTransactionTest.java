@@ -29,7 +29,7 @@ class AgentHealthServiceTransactionTest {
 
     @Configuration(proxyBeanMethods = false)
     @EnableTransactionManagement
-    @Import(AgentHealthService.class)
+    @Import({AgentHealthService.class, HealthProperties.class})
     static class Config {
         @Bean
         PlatformTransactionManager transactionManager(DataSource dataSource) {

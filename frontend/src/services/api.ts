@@ -100,6 +100,7 @@ export interface AgentHealthResponse {
   currentStatus: string;
   lastSeenAt: string | null;
   history: HealthCheckItem[];
+  retentionHours?: number;
 }
 
 export interface HubHealthStats {

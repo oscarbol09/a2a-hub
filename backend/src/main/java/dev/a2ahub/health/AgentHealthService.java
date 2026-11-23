@@ -20,13 +20,16 @@ public class AgentHealthService {
     private final AgentRepository agentRepository;
     private final HealthCheckRepository healthCheckRepository;
     private final AgentHealthMonitor healthMonitor;
+    private final HealthProperties healthProperties;
 
     public AgentHealthService(AgentRepository agentRepository,
                               HealthCheckRepository healthCheckRepository,
-                              AgentHealthMonitor healthMonitor) {
+                              AgentHealthMonitor healthMonitor,
+                              HealthProperties healthProperties) {
         this.agentRepository = agentRepository;
         this.healthCheckRepository = healthCheckRepository;
         this.healthMonitor = healthMonitor;
+        this.healthProperties = healthProperties;
     }
 
     public AgentHealthResponse getAgentHealthHistory(UUID agentId, int limit) {
@@ -45,7 +48,8 @@ public class AgentHealthService {
                 agent.getName(),
                 agent.getStatus(),
                 agent.getLastSeenAt(),
-                history
+                history,
+                healthProperties.getRetentionHours()
         );
     }
 
@@ -94,7 +98,8 @@ public class AgentHealthService {
             String agentName,
             String currentStatus,
             ZonedDateTime lastSeenAt,
-            List<HealthCheckItem> history
+            List<HealthCheckItem> history,
+            int retentionHours
     ) {}
 
     public record HealthCheckItem(

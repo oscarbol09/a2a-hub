@@ -82,6 +82,43 @@ describe('AgentDetailView Component', () => {
   });
 
   describe('Initial Health Telemetry & Header Presentation', () => {
+    it('renders zero latency as a measured response while keeping missing latency distinct', async () => {
+      const history = mockHealthData.history.map(item => ({
+        ...item,
+        latencyMs: item.status === 'HEALTHY' ? 0 : item.latencyMs,
+      }));
+      vi.spyOn(healthApi, 'getAgentHealth').mockResolvedValue({
+        data: { ...mockHealthData, history },
+      } as any);
+
+      const wrapper = mount(AgentDetailView);
+      await flushPromises();
+
+      expect(wrapper.text()).toContain('HEALTHY — 0ms');
+      expect(wrapper.text()).toContain('OFFLINE — No response');
+      expect(wrapper.text()).toContain('0 ms');
+    });
+
+    it('displays the retention configured by the hub', async () => {
+      vi.spyOn(healthApi, 'getAgentHealth').mockResolvedValue({
+        data: { ...mockHealthData, retentionHours: 72 },
+      } as any);
+
+      const wrapper = mount(AgentDetailView);
+      await flushPromises();
+
+      expect(wrapper.text()).toContain('Retention: 72h');
+    });
+
+    it('does not guess the retention when the hub omits it', async () => {
+      vi.spyOn(healthApi, 'getAgentHealth').mockResolvedValue({ data: mockHealthData } as any);
+
+      const wrapper = mount(AgentDetailView);
+      await flushPromises();
+
+      expect(wrapper.text()).not.toContain('48h');
+    });
+
     it('renders agent metadata, computed stats, sparkline history, and probe table', async () => {
       vi.spyOn(healthApi, 'getAgentHealth').mockResolvedValue({ data: mockHealthData } as any);
 
