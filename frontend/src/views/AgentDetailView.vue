@@ -234,7 +234,7 @@ defineExpose({
           <!-- Tooltip -->
           <div class="absolute bottom-full mb-2 hidden group-hover:flex flex-col items-center z-20 pointer-events-none">
             <div class="bg-gray-900 text-white text-[10px] rounded px-2 py-1 shadow-lg whitespace-nowrap">
-              <p class="font-bold">{{ item.status }} — {{ item.latencyMs ? item.latencyMs + 'ms' : 'No response' }}</p>
+              <p class="font-bold">{{ item.status }} — {{ item.latencyMs != null ? item.latencyMs + 'ms' : 'No response' }}</p>
               <p class="text-gray-400">{{ new Date(item.checkedAt).toLocaleTimeString() }}</p>
               <p v-if="item.errorMessage" class="text-rose-400 max-w-xs truncate">{{ item.errorMessage }}</p>
             </div>
@@ -252,7 +252,7 @@ defineExpose({
                 : 'bg-rose-400 group-hover:bg-rose-500'
             ]"
             :style="{
-              height: Math.max(item.latencyMs ? (item.latencyMs / maxLatency) * 100 : 8, 8) + '%'
+              height: Math.max(((item.latencyMs ?? 0) / maxLatency) * 100, 8) + '%'
             }"
           ></div>
         </div>
@@ -266,7 +266,9 @@ defineExpose({
     <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
       <div class="px-6 py-4 border-b border-gray-100 flex justify-between items-center">
         <h2 class="text-base font-semibold text-gray-900">Health Probe Logs</h2>
-        <span class="text-xs text-gray-500">Auto-purged after 48h</span>
+        <span v-if="healthData?.retentionHours != null" class="text-xs text-gray-500">
+          Retention: {{ healthData.retentionHours }}h
+        </span>
       </div>
 
       <div class="overflow-x-auto">
@@ -319,7 +321,7 @@ defineExpose({
                 </span>
               </td>
               <td class="px-6 py-3.5 text-xs font-mono text-gray-700">
-                {{ item.latencyMs !== null ? item.latencyMs + ' ms' : '—' }}
+                {{ item.latencyMs != null ? item.latencyMs + ' ms' : '—' }}
               </td>
               <td class="px-6 py-3.5 text-xs text-gray-500 max-w-md truncate">
                 {{ item.errorMessage || 'HTTP 200 OK — Agent Card valid' }}

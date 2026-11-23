@@ -45,7 +45,8 @@ class AgentHealthControllerTest {
                 "MetricsAgent",
                 "HEALTHY",
                 ZonedDateTime.now(),
-                List.of(logItem)
+                List.of(logItem),
+                72
         );
 
         when(agentHealthService.getAgentHealthHistory(agentId, 30)).thenReturn(response);
@@ -56,6 +57,7 @@ class AgentHealthControllerTest {
                 .andExpect(jsonPath("$.agentId").value(agentId.toString()))
                 .andExpect(jsonPath("$.agentName").value("MetricsAgent"))
                 .andExpect(jsonPath("$.currentStatus").value("HEALTHY"))
+                .andExpect(jsonPath("$.retentionHours").value(72))
                 .andExpect(jsonPath("$.history[0].status").value("HEALTHY"))
                 .andExpect(jsonPath("$.history[0].latencyMs").value(120));
 

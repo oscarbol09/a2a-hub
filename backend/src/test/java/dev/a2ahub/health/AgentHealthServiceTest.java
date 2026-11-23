@@ -11,6 +11,7 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.PageRequest;
 
@@ -39,6 +40,9 @@ class AgentHealthServiceTest {
     @Mock
     private AgentHealthMonitor healthMonitor;
 
+    @Spy
+    private HealthProperties healthProperties = new HealthProperties();
+
     @InjectMocks
     private AgentHealthService healthService;
 
@@ -63,11 +67,13 @@ class AgentHealthServiceTest {
         when(agentRepository.findById(agentId)).thenReturn(Optional.of(agent));
         when(healthCheckRepository.findRecentByAgentId(eq(agentId), any(PageRequest.class)))
                 .thenReturn(List.of());
+        healthProperties.setRetentionHours(72);
 
         AgentHealthService.AgentHealthResponse response = healthService.getAgentHealthHistory(agentId, requestedLimit);
 
         assertThat(response).isNotNull();
         assertThat(response.agentId()).isEqualTo(agentId);
+        assertThat(response.retentionHours()).isEqualTo(72);
 
         ArgumentCaptor<PageRequest> pageRequestCaptor = ArgumentCaptor.forClass(PageRequest.class);
         verify(healthCheckRepository).findRecentByAgentId(eq(agentId), pageRequestCaptor.capture());
