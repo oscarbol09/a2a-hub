@@ -35,8 +35,8 @@ public class DiscoveryController {
             @RequestParam String q,
             @RequestParam(defaultValue = "10") int limit
     ) {
-        return discoveryService.discoverSemantic(q, limit).stream()
-                .map(AgentResponse::fromEntity)
+        return discoveryService.discoverSemanticWithScores(q, limit).stream()
+                .map(result -> AgentResponse.fromEntity(result.agent(), result.similarityScore()))
                 .toList();
     }
 

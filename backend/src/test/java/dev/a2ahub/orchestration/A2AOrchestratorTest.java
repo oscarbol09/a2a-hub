@@ -217,7 +217,7 @@ class A2AOrchestratorTest {
         A2AOrchestrator unconfiguredOrchestrator = new A2AOrchestrator(discoveryService, objectMapper, null);
 
         when(discoveryService.discoverSemanticWithScores("Weather task", 5))
-                .thenReturn(List.of(new AgentDiscoveryService.ScoredAgent(weatherAgent, 0.0)));
+                .thenReturn(List.of(new AgentDiscoveryService.ScoredAgent(weatherAgent, null)));
 
         AiSuggestionDto suggestion = unconfiguredOrchestrator.suggestAgent("Weather task");
 

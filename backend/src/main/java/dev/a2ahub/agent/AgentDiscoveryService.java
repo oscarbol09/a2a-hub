@@ -64,7 +64,7 @@ public class AgentDiscoveryService {
     public List<ScoredAgent> discoverSemanticWithScores(String query, int limit) {
         if (query == null || query.isBlank()) {
             return discover(null, null, null, null, 0, limit).stream()
-                    .map(a -> new ScoredAgent(a, 0.0))
+                    .map(a -> new ScoredAgent(a, null))
                     .toList();
         }
 
@@ -73,7 +73,7 @@ public class AgentDiscoveryService {
 
         if (queryVector == null) {
             return discover(null, null, null, query, 0, safeLimit).stream()
-                    .map(a -> new ScoredAgent(a, 0.0))
+                    .map(a -> new ScoredAgent(a, null))
                     .toList();
         }
 
@@ -87,8 +87,8 @@ public class AgentDiscoveryService {
                 for (AgentRepository.AgentWithScore s : scoredResults) {
                     Agent agent = agentMap.get(s.getId());
                     if (agent != null) {
-                        double rawScore = s.getSimilarityScore() != null ? s.getSimilarityScore() : 0.0;
-                        double calibratedScore = Math.max(0.0, Math.min(1.0, rawScore));
+                        Double rawScore = s.getSimilarityScore();
+                        Double calibratedScore = rawScore == null ? null : Math.max(0.0, Math.min(1.0, rawScore));
                         results.add(new ScoredAgent(agent, calibratedScore));
                     }
                 }
@@ -101,7 +101,7 @@ public class AgentDiscoveryService {
         }
 
         return discover(null, null, null, query, 0, safeLimit).stream()
-                .map(a -> new ScoredAgent(a, 0.0))
+                .map(a -> new ScoredAgent(a, null))
                 .toList();
     }
 
@@ -161,7 +161,8 @@ public class AgentDiscoveryService {
 
     public record SkillSummary(String skillId, String name, String description, List<String> tags, long agentCount, List<UUID> agentIds) {}
     public record TagSummary(String tag, long count) {}
-    public record ScoredAgent(Agent agent, double similarityScore) {}
+    /** The score is absent when no vector similarity is available. */
+    public record ScoredAgent(Agent agent, Double similarityScore) {}
 
     private static class SkillSummaryBuilder {
         private final String skillId;
