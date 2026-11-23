@@ -1,5 +1,7 @@
 package dev.a2ahub.agent;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+
 import java.time.ZonedDateTime;
 import java.util.UUID;
 
@@ -17,9 +19,14 @@ public record AgentResponse(
         String authType,
         AgentCard agentCard,
         ZonedDateTime registeredAt,
-        ZonedDateTime lastSeenAt
+        ZonedDateTime lastSeenAt,
+        @JsonInclude(JsonInclude.Include.NON_NULL) Double similarityScore
 ) {
     public static AgentResponse fromEntity(Agent agent) {
+        return fromEntity(agent, null);
+    }
+
+    public static AgentResponse fromEntity(Agent agent, Double similarityScore) {
         if (agent == null) {
             return null;
         }
@@ -34,7 +41,8 @@ public record AgentResponse(
                 agent.getAuthType(),
                 agent.getAgentCard(),
                 agent.getRegisteredAt(),
-                agent.getLastSeenAt()
+                agent.getLastSeenAt(),
+                similarityScore
         );
     }
 }

@@ -20,15 +20,6 @@ let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let searchRequestId = 0;
 let unmounted = false;
 
-const graduatedScores = [0.98, 0.94, 0.89, 0.85, 0.82, 0.78, 0.74, 0.71, 0.68, 0.65];
-
-const calculateGraduatedScore = (index: number): number => {
-  if (index < graduatedScores.length) {
-    return graduatedScores[index];
-  }
-  return Math.max(0.50, +(0.65 - (index - graduatedScores.length + 1) * 0.03).toFixed(2));
-};
-
 const clearDebounceTimer = () => {
   if (debounceTimer !== null) {
     clearTimeout(debounceTimer);
@@ -80,10 +71,7 @@ const executeSearch = () => runSearch(fetchKeywordAgents, 'Discovery search fail
 
 const executeSemanticSearch = () => runSearch(async () => {
   const res = await discoveryApi.discoverSemantic(searchQuery.value);
-  return res.data.map((agent, index) => ({
-    ...agent,
-    similarityScore: agent.similarityScore ?? calculateGraduatedScore(index)
-  }));
+  return res.data;
 }, 'Semantic discovery search failed');
 
 const searchInCurrentMode = () => {

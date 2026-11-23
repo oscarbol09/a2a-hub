@@ -602,9 +602,15 @@ describe('DiscoverView Component', () => {
       vi.useRealTimers();
     });
 
-    it('assigns descending graduated similarity scores to results and renders match badges on cards', async () => {
+    it('renders API scores, including zero, and omits the badge for unscored results', async () => {
       vi.spyOn(discoveryApi, 'discover').mockResolvedValue({ data: [] } as any);
-      vi.spyOn(discoveryApi, 'discoverSemantic').mockResolvedValue({ data: [mockAgent1, mockAgent2] } as any);
+      vi.spyOn(discoveryApi, 'discoverSemantic').mockResolvedValue({
+        data: [
+          { ...mockAgent1, similarityScore: 0.73 },
+          { ...mockAgent2, similarityScore: 0 },
+          { ...mockAgent2, id: 'unscored' },
+        ],
+      } as any);
       vi.spyOn(discoveryApi, 'getSkills').mockResolvedValue({ data: [] } as any);
       vi.spyOn(discoveryApi, 'getTags').mockResolvedValue({ data: [] } as any);
 
@@ -615,26 +621,18 @@ describe('DiscoverView Component', () => {
       await (wrapper.vm as any).setSearchMode('semantic');
       await flushPromises();
 
-      // Check agent models
-      const agents = (wrapper.vm as any).agents;
-      expect(agents).toHaveLength(2);
-      expect(agents[0].similarityScore).toBe(0.98);
-      expect(agents[1].similarityScore).toBe(0.94);
-
-      // Verify AgentCard components receive similarityScore prop
       const agentCards = wrapper.findAllComponents({ name: 'AgentCard' });
-      expect(agentCards).toHaveLength(2);
-      expect(agentCards[0].props('similarityScore')).toBe(0.98);
-      expect(agentCards[1].props('similarityScore')).toBe(0.94);
-
-      // Verify badges rendered in card text
-      expect(wrapper.text()).toContain('98% Match');
-      expect(wrapper.text()).toContain('94% Match');
+      expect(agentCards).toHaveLength(3);
+      expect(agentCards[0].text()).toContain('73% Match');
+      expect(agentCards[1].text()).toContain('0% Match');
+      expect(agentCards[2].text()).not.toContain('Match');
     });
 
     it('removes visual similarity scores when switching back to keyword mode', async () => {
       vi.spyOn(discoveryApi, 'discover').mockResolvedValue({ data: [mockAgent1, mockAgent2] } as any);
-      vi.spyOn(discoveryApi, 'discoverSemantic').mockResolvedValue({ data: [mockAgent1, mockAgent2] } as any);
+      vi.spyOn(discoveryApi, 'discoverSemantic').mockResolvedValue({
+        data: [{ ...mockAgent1, similarityScore: 0.73 }, mockAgent2],
+      } as any);
       vi.spyOn(discoveryApi, 'getSkills').mockResolvedValue({ data: mockSkills } as any);
       vi.spyOn(discoveryApi, 'getTags').mockResolvedValue({ data: mockTags } as any);
 
@@ -644,7 +642,7 @@ describe('DiscoverView Component', () => {
       // Switch to semantic
       await (wrapper.vm as any).setSearchMode('semantic');
       await flushPromises();
-      expect(wrapper.text()).toContain('98% Match');
+      expect(wrapper.text()).toContain('73% Match');
 
       // Switch back to keyword
       await (wrapper.vm as any).setSearchMode('keyword');

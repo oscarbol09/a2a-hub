@@ -52,7 +52,8 @@ class DiscoveryControllerTest {
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].name").value("SearchAgent"))
-                .andExpect(jsonPath("$[0].url").value("https://search.agent.io"));
+                .andExpect(jsonPath("$[0].url").value("https://search.agent.io"))
+                .andExpect(jsonPath("$[0].similarityScore").doesNotHaveJsonPath());
 
         verify(discoveryService).discover("web_search", "news", "streaming", "technology", 0, 50);
     }
@@ -65,8 +66,10 @@ class DiscoveryControllerTest {
         agent.setName("AI Researcher");
         agent.setUrl("https://ai.agent.io");
 
-        when(discoveryService.discoverSemantic("machine learning pipelines", 10))
-                .thenReturn(List.of(agent));
+        when(discoveryService.discoverSemanticWithScores("machine learning pipelines", 10))
+                .thenReturn(List.of(new AgentDiscoveryService.ScoredAgent(agent, 0.73),
+                        new AgentDiscoveryService.ScoredAgent(agent, 0.0),
+                        new AgentDiscoveryService.ScoredAgent(agent, null)));
 
         mockMvc.perform(get("/api/v1/discover/semantic")
                         .param("q", "machine learning pipelines")
@@ -74,9 +77,12 @@ class DiscoveryControllerTest {
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].name").value("AI Researcher"))
-                .andExpect(jsonPath("$[0].url").value("https://ai.agent.io"));
+                .andExpect(jsonPath("$[0].url").value("https://ai.agent.io"))
+                .andExpect(jsonPath("$[0].similarityScore").value(0.73))
+                .andExpect(jsonPath("$[1].similarityScore").value(0.0))
+                .andExpect(jsonPath("$[2].similarityScore").doesNotHaveJsonPath());
 
-        verify(discoveryService).discoverSemantic("machine learning pipelines", 10);
+        verify(discoveryService).discoverSemanticWithScores("machine learning pipelines", 10);
     }
 
     @Test

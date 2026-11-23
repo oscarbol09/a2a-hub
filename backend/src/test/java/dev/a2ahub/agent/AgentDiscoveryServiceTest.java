@@ -142,8 +142,8 @@ class AgentDiscoveryServiceTest {
     }
 
     @Test
-    @DisplayName("Should fallback to 0.0 similarity score when embedding generation fails")
-    void shouldFallbackToZeroScoreWhenEmbeddingFails() {
+    @DisplayName("Should return unscored keyword results when embedding generation fails")
+    void shouldReturnUnscoredResultsWhenEmbeddingFails() {
         String query = "some fallback query";
         when(embeddingService.generateEmbedding(query)).thenReturn(null);
         when(agentRepository.searchIndexedAgents(eq(null), eq(null), eq(null), eq("some fallback query"), any(Pageable.class)))
@@ -153,7 +153,7 @@ class AgentDiscoveryServiceTest {
 
         assertThat(results).hasSize(1);
         assertThat(results.getFirst().agent().getName()).isEqualTo("WeatherAgent");
-        assertThat(results.getFirst().similarityScore()).isEqualTo(0.0);
+        assertThat(results.getFirst().similarityScore()).isNull();
     }
 
     @Test

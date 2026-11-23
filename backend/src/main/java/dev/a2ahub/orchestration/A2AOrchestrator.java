@@ -174,9 +174,9 @@ public class A2AOrchestrator {
     private AiSuggestionDto fallbackToTopSemantic(List<AgentDiscoveryService.ScoredAgent> candidates, String reason) {
         AgentDiscoveryService.ScoredAgent top = candidates.get(0);
         Agent topAgent = top.agent();
-        double score = top.similarityScore();
+        Double score = top.similarityScore();
 
-        if (score <= 0.0) {
+        if (score == null || score <= 0.0) {
             String fallbackReasoning = String.format(Locale.ROOT,
                     "Selected via lexical search fallback (confidence: 0.00) due to unindexed vector embeddings [%s].", reason);
             return new AiSuggestionDto(topAgent.getId(), topAgent.getName(), fallbackReasoning, "VECTOR_FALLBACK", true, 0.0, reason);
