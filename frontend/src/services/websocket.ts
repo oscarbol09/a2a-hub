@@ -36,7 +36,6 @@ export class WebSocketService {
       heartbeatOutgoing: 10000,
       onConnect: () => {
         this.isConnected = true;
-        this.notifyConnectionListeners(true);
         console.log('[WebSocket] Connected to A2A Hub broker at:', targetUrl);
 
         this.client?.subscribe('/topic/agents/status', (message: IMessage) => {
@@ -56,6 +55,8 @@ export class WebSocketService {
             console.error('[WebSocket] Failed to parse task updated event:', e);
           }
         });
+
+        this.notifyConnectionListeners(true);
       },
       onDisconnect: () => {
         this.isConnected = false;

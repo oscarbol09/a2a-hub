@@ -4,6 +4,7 @@ import { setActivePinia, createPinia } from 'pinia';
 import OrchestrateView from '../OrchestrateView.vue';
 import TaskTimeline from '../../components/TaskTimeline.vue';
 import { agentsApi, orchestrationApi, tasksApi, type Agent, type TaskDto } from '../../services/api';
+import { wsService } from '../../services/websocket';
 import { useTaskStore } from '../../stores/taskStore';
 
 const mockAgent1: Agent = {
@@ -65,6 +66,7 @@ describe('OrchestrateView Component', () => {
     pinia = createPinia();
     setActivePinia(pinia);
     vi.restoreAllMocks();
+    vi.spyOn(wsService, 'connect').mockImplementation(() => {});
   });
 
   afterEach(() => {
@@ -83,6 +85,7 @@ describe('OrchestrateView Component', () => {
       await flushPromises();
 
       expect(agentsApi.getAll).toHaveBeenCalledTimes(1);
+      expect(wsService.connect).toHaveBeenCalledTimes(1);
 
       // Verify dropdown select options
       const select = wrapper.find('select');
@@ -287,14 +290,16 @@ describe('OrchestrateView Component', () => {
       expect(wrapper.text()).toContain('Please select an agent.');
     });
 
-    it('submits task with valid JSON, calls taskStore.submitTask, and displays TaskTimeline', async () => {
+    it.each([true, false])('submits valid JSON with async mode %s and displays TaskTimeline', async (runAsynchronously) => {
       vi.spyOn(agentsApi, 'getAll').mockResolvedValueOnce({
         data: [mockAgent1],
       } as any);
 
       vi.spyOn(tasksApi, 'submitTask').mockResolvedValueOnce({
+        status: runAsynchronously ? 202 : 201,
         data: mockTaskResult,
       } as any);
+      vi.spyOn(tasksApi, 'getTask').mockResolvedValueOnce({ data: mockTaskResult } as any);
 
       const wrapper = mount(OrchestrateView, {
         global: { plugins: [pinia] },
@@ -311,6 +316,11 @@ describe('OrchestrateView Component', () => {
       // Set valid JSON payload
       const payloadTextarea = wrapper.find('textarea.font-mono');
       await payloadTextarea.setValue(JSON.stringify({ query: 'Execute analytics task' }));
+      const asyncToggle = wrapper.get<HTMLInputElement>('#task-async');
+      expect(asyncToggle.element.checked).toBe(true);
+      if (!runAsynchronously) {
+        await asyncToggle.setValue(false);
+      }
 
       // Submit form
       const form = wrapper.find('form');
@@ -319,6 +329,11 @@ describe('OrchestrateView Component', () => {
 
       expect(submitSpy).toHaveBeenCalledWith('agent-1', {
         query: 'Execute analytics task',
+      }, runAsynchronously);
+      expect(tasksApi.submitTask).toHaveBeenCalledWith({
+        agentId: 'agent-1',
+        payload: { query: 'Execute analytics task' },
+        async: runAsynchronously,
       });
 
       // TaskTimeline component should now be rendered with active task

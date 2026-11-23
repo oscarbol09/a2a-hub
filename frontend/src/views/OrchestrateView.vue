@@ -2,6 +2,7 @@
 import { ref, onMounted } from 'vue';
 import { useTaskStore } from '../stores/taskStore';
 import { agentsApi, type Agent, orchestrationApi } from '../services/api';
+import { wsService } from '../services/websocket';
 import TaskTimeline from '../components/TaskTimeline.vue';
 import { Send, AlertCircle, Sparkles } from 'lucide-vue-next';
 
@@ -9,6 +10,7 @@ const taskStore = useTaskStore();
 const agents = ref<Agent[]>([]);
 const selectedAgentId = ref('');
 const payloadInput = ref('{\n  "query": "Hello Agent"\n}');
+const runAsynchronously = ref(true);
 const isLoadingAgents = ref(false);
 const error = ref<string | null>(null);
 
@@ -21,6 +23,7 @@ const aiSuggestionFallback = ref(false);
 const aiConfidence = ref<number | null>(null);
 
 onMounted(async () => {
+  wsService.connect();
   isLoadingAgents.value = true;
   try {
     const res = await agentsApi.getAll();
@@ -42,7 +45,7 @@ const submitTask = async () => {
   }
   
   let payloadStr = payloadInput.value;
-  let payloadObj: Record<string, any>;
+  let payloadObj: Record<string, unknown>;
   try {
     payloadObj = JSON.parse(payloadStr);
   } catch (err) {
@@ -54,7 +57,7 @@ const submitTask = async () => {
   taskStore.clearTask();
   
   try {
-    await taskStore.submitTask(selectedAgentId.value, payloadObj);
+    await taskStore.submitTask(selectedAgentId.value, payloadObj, runAsynchronously.value);
   } catch (err: any) {
     error.value = err.message || 'Failed to submit task.';
   }
@@ -169,6 +172,11 @@ const suggestAgent = async () => {
                 class="w-full bg-gray-50 border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
               ></textarea>
             </div>
+
+            <label for="task-async" class="flex items-center gap-2 text-sm text-gray-700">
+              <input id="task-async" v-model="runAsynchronously" type="checkbox" :disabled="taskStore.isLoading" />
+              Run task asynchronously
+            </label>
 
             <div v-if="error || taskStore.error" class="flex items-start gap-2 p-3 bg-red-50 text-red-700 rounded-lg text-sm border border-red-100">
               <AlertCircle class="w-4 h-4 mt-0.5 shrink-0" />
