@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { setActivePinia, createPinia } from 'pinia';
+import { flushPromises } from '@vue/test-utils';
 import { useAgentStore } from '../agentStore';
-import { api, healthApi, type Agent, type AgentStatusEvent, type HubHealthStats } from '../../services/api';
+import { api, healthApi, type Agent, type AgentRegistryEvent, type AgentStatusEvent, type HubHealthStats } from '../../services/api';
 import { wsService } from '../../services/websocket';
 
 const mockAgentFixture: Agent = {
@@ -276,6 +277,38 @@ describe('useAgentStore Pinia Store', () => {
   });
 
   describe('initWebSocket & Real-time Telemetry Stream', () => {
+    it('updates the registry for registration and unregistration events without duplicate cards', async () => {
+      const store = useAgentStore();
+      const registrationListener = vi.spyOn(wsService, 'onAgentRegistryChange');
+      vi.spyOn(api, 'get').mockResolvedValue({ data: mockAgentFixture });
+      vi.spyOn(api, 'post').mockResolvedValue({ data: mockAgentFixture });
+      store.initWebSocket();
+      const onRegistryChange = registrationListener.mock.calls[0]![0];
+      const event: AgentRegistryEvent = {
+        type: 'AGENT_REGISTERED',
+        agentId: mockAgentFixture.id,
+        status: 'HEALTHY',
+      };
+
+      onRegistryChange(event);
+      await flushPromises();
+      expect(store.agents).toEqual([mockAgentFixture]);
+
+      await store.registerAgent(mockAgentFixture.url);
+      expect(store.agents).toEqual([mockAgentFixture]);
+
+      onRegistryChange({ type: 'AGENT_STATUS_CHANGED', agentId: event.agentId, status: 'DEGRADED' });
+      expect(store.agents[0]!.status).toBe('DEGRADED');
+
+      onRegistryChange({ type: 'AGENT_STATUS_CHANGED', agentId: event.agentId, status: 'UNREGISTERED' });
+      expect(store.agents).toEqual([]);
+
+      onRegistryChange(event);
+      onRegistryChange({ type: 'AGENT_STATUS_CHANGED', agentId: event.agentId, status: 'UNREGISTERED' });
+      await flushPromises();
+      expect(store.agents).toEqual([]);
+    });
+
     it('establishes WebSocket connection and registers status change listener', () => {
       const store = useAgentStore();
 

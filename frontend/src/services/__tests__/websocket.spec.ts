@@ -190,6 +190,23 @@ describe('WebSocketService', () => {
   });
 
   describe('Event Subscriptions & Message Streaming', () => {
+    it('dispatches registry events from the agent registry topic', () => {
+      const listener = vi.fn();
+      const registration = { type: 'AGENT_REGISTERED', agentId: 'agent-1', status: 'HEALTHY' };
+      const removal = { type: 'AGENT_STATUS_CHANGED', agentId: 'agent-1', status: 'UNREGISTERED' };
+      service.connect('ws://localhost:8080/ws');
+      capturedClientOptions.onConnect();
+
+      const subscribe = clientInstances[0].subscribe;
+      expect(subscribe).toHaveBeenCalledWith('/topic/agents', expect.any(Function));
+      // The topic was subscribed on connect, so late listeners can consume its events.
+      service.onAgentRegistryChange(listener);
+      for (const event of [registration, removal]) {
+        mockSubscribeCallbacks['/topic/agents']!({ body: JSON.stringify(event) } as IMessage);
+      }
+      expect(listener.mock.calls).toEqual([[registration], [removal]]);
+    });
+
     const mockEventFixture: AgentStatusEvent = {
       agentId: '550e8400-e29b-41d4-a716-446655440000',
       agentName: 'WeatherAgent',

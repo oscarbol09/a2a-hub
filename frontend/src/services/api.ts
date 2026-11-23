@@ -122,6 +122,10 @@ export interface AgentStatusEvent {
   message: string;
 }
 
+export type AgentRegistryEvent =
+  | { type: 'AGENT_REGISTERED'; agentId: string; status: AgentStatus }
+  | { type: 'AGENT_STATUS_CHANGED'; agentId: string; status: AgentStatus | 'UNREGISTERED' };
+
 export const agentsApi = {
   getAll: (page = 0, size = 50) => api.get<Agent[]>('/agents', { params: { page, size } }),
   getById: (id: string) => api.get<Agent>(`/agents/${id}`),
