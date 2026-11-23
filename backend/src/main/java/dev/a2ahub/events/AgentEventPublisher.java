@@ -6,6 +6,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.ZonedDateTime;
 import java.util.Map;
@@ -41,6 +43,19 @@ public class AgentEventPublisher {
     }
 
     public void publishAgentStatusChanged(UUID agentId, String status) {
+        if ("UNREGISTERED".equals(status) && TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    broadcastAgentStatusChanged(agentId, status);
+                }
+            });
+        } else {
+            broadcastAgentStatusChanged(agentId, status);
+        }
+    }
+
+    private void broadcastAgentStatusChanged(UUID agentId, String status) {
         try {
             Map<String, Object> event = Map.of(
                     "type", "AGENT_STATUS_CHANGED",

@@ -10,6 +10,8 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.support.TransactionSynchronizationUtils;
 
 import java.time.ZonedDateTime;
 import java.util.Map;
@@ -92,6 +94,20 @@ class AgentEventPublisherTest {
                 .containsEntry("agentId", agentId)
                 .containsEntry("status", "DEGRADED");
         assertThat(payload.get("timestamp")).isNotNull();
+    }
+
+    @Test
+    void shouldWaitForCommitBeforeBroadcastingUnregistration() {
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            eventPublisher.publishAgentStatusChanged(UUID.randomUUID(), "UNREGISTERED");
+            verifyNoInteractions(messagingTemplate);
+
+            TransactionSynchronizationUtils.triggerAfterCommit();
+            verify(messagingTemplate).convertAndSend(eq("/topic/agents"), any(Map.class));
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
     }
 
     @Test

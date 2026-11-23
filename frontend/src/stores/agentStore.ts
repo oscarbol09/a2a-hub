@@ -10,6 +10,16 @@ export const useAgentStore = defineStore('agents', () => {
   const hubStats = ref<HubHealthStats | null>(null);
   const wsConnected = ref(false);
   const recentEvents = ref<AgentStatusEvent[]>([]);
+  const registrationReads = new Map<string, AbortController>();
+
+  const upsertAgent = (agent: Agent) => {
+    const index = agents.value.findIndex(current => current.id === agent.id);
+    if (index >= 0) {
+      agents.value[index] = agent;
+    } else {
+      agents.value.push(agent);
+    }
+  };
 
   const fetchAgents = async () => {
     loading.value = true;
@@ -24,18 +34,14 @@ export const useAgentStore = defineStore('agents', () => {
     }
   };
 
-  const fetchAgentById = async (id: string) => {
+  const fetchAgentById = async (id: string, signal?: AbortSignal) => {
     try {
-      const response = await api.get<Agent>(`/agents/${id}`);
-      const index = agents.value.findIndex(a => a.id === id);
-      if (index >= 0) {
-        agents.value[index] = response.data;
-      } else {
-        agents.value.push(response.data);
-      }
+      const response = await api.get<Agent>(`/agents/${id}`, signal ? { signal } : undefined);
+      if (signal?.aborted) return null;
+      upsertAgent(response.data);
       return response.data;
     } catch (err: any) {
-      console.warn(`Failed to fetch agent ${id}:`, err);
+      if (!signal?.aborted) console.warn(`Failed to fetch agent ${id}:`, err);
       return null;
     }
   };
@@ -54,7 +60,7 @@ export const useAgentStore = defineStore('agents', () => {
     error.value = null;
     try {
       const response = await api.post<Agent>('/agents', { url });
-      agents.value.push(response.data);
+      upsertAgent(response.data);
       fetchHubStats();
       return true;
     } catch (err: any) {
@@ -104,8 +110,28 @@ export const useAgentStore = defineStore('agents', () => {
       wsConnected.value = connected;
     });
 
-    wsService.connect();
-    wsConnected.value = wsService.isConnected;
+    wsService.onAgentRegistryChange(async (event) => {
+      if (event.type === 'AGENT_REGISTERED') {
+        registrationReads.get(event.agentId)?.abort();
+        const read = new AbortController();
+        registrationReads.set(event.agentId, read);
+        await fetchAgentById(event.agentId, read.signal);
+        if (read.signal.aborted) return;
+        registrationReads.delete(event.agentId);
+      } else if (event.type === 'AGENT_STATUS_CHANGED') {
+        if (event.status === 'UNREGISTERED') {
+          registrationReads.get(event.agentId)?.abort();
+          registrationReads.delete(event.agentId);
+          agents.value = agents.value.filter(agent => agent.id !== event.agentId);
+        } else {
+          const agent = agents.value.find(agent => agent.id === event.agentId);
+          if (agent) agent.status = event.status;
+        }
+      } else {
+        return;
+      }
+      void fetchHubStats();
+    });
 
     wsService.onStatusChange((event: AgentStatusEvent) => {
       // Keep trailing event stream for telemetry feed
@@ -124,6 +150,9 @@ export const useAgentStore = defineStore('agents', () => {
       
       fetchHubStats();
     });
+
+    wsService.connect();
+    wsConnected.value = wsService.isConnected;
   };
 
   return {

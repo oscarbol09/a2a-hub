@@ -1,5 +1,5 @@
 import { Client, type IMessage } from '@stomp/stompjs';
-import type { AgentStatusEvent } from './api';
+import type { AgentRegistryEvent, AgentStatusEvent } from './api';
 
 export interface TaskUpdatedEvent {
   type: string;
@@ -15,6 +15,7 @@ export type ConnectionEventHandler = (connected: boolean) => void;
 export class WebSocketService {
   private client: Client | null = null;
   private listeners: StatusEventHandler[] = [];
+  private registryListeners: ((event: AgentRegistryEvent) => void)[] = [];
   private taskListeners: ((event: TaskUpdatedEvent) => void)[] = [];
   private connectionListeners: ConnectionEventHandler[] = [];
   public isConnected = false;
@@ -56,6 +57,15 @@ export class WebSocketService {
           }
         });
 
+        this.client?.subscribe('/topic/agents', (message: IMessage) => {
+          try {
+            const event: AgentRegistryEvent = JSON.parse(message.body);
+            this.registryListeners.forEach(listener => listener(event));
+          } catch (e) {
+            console.error('[WebSocket] Failed to parse agent registry event:', e);
+          }
+        });
+
         this.notifyConnectionListeners(true);
       },
       onDisconnect: () => {
@@ -77,6 +87,13 @@ export class WebSocketService {
     this.listeners.push(callback);
     return () => {
       this.listeners = this.listeners.filter(l => l !== callback);
+    };
+  }
+
+  public onAgentRegistryChange(callback: (event: AgentRegistryEvent) => void) {
+    this.registryListeners.push(callback);
+    return () => {
+      this.registryListeners = this.registryListeners.filter(listener => listener !== callback);
     };
   }
 
