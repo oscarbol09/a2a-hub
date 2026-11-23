@@ -14,6 +14,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Duration;
 import java.util.Arrays;
+import java.util.Locale;
 
 
 @Service
@@ -99,7 +100,7 @@ public class EmbeddingService {
         float[] vector = new float[VECTOR_DIMENSION];
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(text.toLowerCase().getBytes(StandardCharsets.UTF_8));
+            byte[] hash = digest.digest(text.toLowerCase(Locale.ROOT).getBytes(StandardCharsets.UTF_8));
 
             for (int i = 0; i < VECTOR_DIMENSION; i++) {
                 byte b = hash[i % hash.length];

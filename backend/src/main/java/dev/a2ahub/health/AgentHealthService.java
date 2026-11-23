@@ -9,7 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.ZonedDateTime;
 import java.util.List;
-
+import java.util.Locale;
 import java.util.UUID;
 
 @Service
@@ -66,7 +66,7 @@ public class AgentHealthService {
         for (AgentRepository.StatusCountProjection sc : statusCounts) {
             long count = sc.getCount();
             total += count;
-            String status = sc.getStatus() != null ? sc.getStatus().toUpperCase() : "UNKNOWN";
+            String status = sc.getStatus() != null ? sc.getStatus().toUpperCase(Locale.ROOT) : "UNKNOWN";
             switch (status) {
                 case "HEALTHY" -> healthy = count;
                 case "DEGRADED" -> degraded = count;

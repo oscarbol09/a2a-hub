@@ -15,6 +15,7 @@ import org.springframework.web.client.RestClient;
 
 import java.net.URI;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 
 @Service
@@ -107,8 +108,15 @@ public class AgentRegistryService {
             List<AgentSkillEntity> skillEntities = card.skills().stream().map(s -> {
                 AgentSkillEntity entity = new AgentSkillEntity();
                 entity.setAgent(savedAgent);
-                entity.setSkillId(s.id() != null && !s.id().isBlank() ? s.id() : s.name().toLowerCase().replace(" ", "_"));
-                entity.setName(s.name() != null ? s.name() : "Unnamed Skill");
+                boolean hasName = s.name() != null && !s.name().isBlank();
+                String skillId = s.id();
+                if (skillId == null || skillId.isBlank()) {
+                    skillId = hasName
+                            ? s.name().toLowerCase(Locale.ROOT).replace(" ", "_")
+                            : "unnamed_skill_" + UUID.randomUUID();
+                }
+                entity.setSkillId(skillId);
+                entity.setName(hasName ? s.name() : "Unnamed Skill");
                 entity.setDescription(s.description());
                 entity.setTags(s.tags() != null ? s.tags() : List.of());
                 return entity;

@@ -4,8 +4,11 @@ import dev.a2ahub.agent.AgentCard;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.parallel.ResourceLock;
+import org.junit.jupiter.api.parallel.Resources;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -55,6 +58,20 @@ class EmbeddingServiceTest {
         String emb2 = embeddingService.generateEmbedding(text);
 
         assertThat(emb1).isEqualTo(emb2);
+    }
+
+    @Test
+    @ResourceLock(Resources.LOCALE)
+    void shouldProduceTheSameFallbackEmbeddingAcrossLocales() {
+        Locale previous = Locale.getDefault();
+        try {
+            Locale.setDefault(Locale.ROOT);
+            String expected = embeddingService.generateEmbedding("INDEX");
+            Locale.setDefault(Locale.forLanguageTag("tr"));
+            assertThat(embeddingService.generateEmbedding("INDEX")).isEqualTo(expected);
+        } finally {
+            Locale.setDefault(previous);
+        }
     }
 
     @Test
