@@ -5,8 +5,10 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.Ordered;
 import org.springframework.web.filter.OncePerRequestFilter;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
@@ -39,8 +41,8 @@ public class WebConfig implements WebMvcConfigurer {
     }
 
     @Bean
-    public OncePerRequestFilter securityHeadersFilter() {
-        return new OncePerRequestFilter() {
+    public FilterRegistrationBean<OncePerRequestFilter> securityHeadersFilter() {
+        var filter = new OncePerRequestFilter() {
             @Override
             protected void doFilterInternal(HttpServletRequest request,
                                             HttpServletResponse response,
@@ -73,5 +75,9 @@ public class WebConfig implements WebMvcConfigurer {
                 filterChain.doFilter(request, response);
             }
         };
+        var registration = new FilterRegistrationBean<OncePerRequestFilter>(filter);
+        // Add the headers before authentication and rate limiting can commit a response.
+        registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 1);
+        return registration;
     }
 }
