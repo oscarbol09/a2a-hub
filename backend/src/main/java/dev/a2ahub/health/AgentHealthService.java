@@ -5,6 +5,7 @@ import dev.a2ahub.agent.AgentNotFoundException;
 import dev.a2ahub.agent.AgentRepository;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.ZonedDateTime;
@@ -48,6 +49,7 @@ public class AgentHealthService {
         );
     }
 
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public AgentHealthMonitor.HealthCheckResult triggerHealthCheck(UUID agentId) {
         Agent agent = agentRepository.findById(agentId)
                 .orElseThrow(() -> new AgentNotFoundException("Agent not found with ID: " + agentId));
