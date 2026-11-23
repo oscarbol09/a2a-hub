@@ -131,16 +131,20 @@ public class TaskService {
             log.info("Dispatching async task {} for agent {} to virtual thread executor", submittedTask.id(), agentName);
             taskExecutor.execute(() -> {
                 try {
-                    //NEW: mark the task as notify WebSocket clients
                     TaskDto workingDto = persistenceService.updateTaskResult(submittedTask.id(), TaskState.WORKING, null, null);
                     eventPublisher.publishTaskUpdated(workingDto);
-                    
+
                     log.info("Starting background proxy execution for task {}", submittedTask.id());
                     executeResolvedProxy(taskClient, submittedTask.id(), submittedTask.contextId(), agentName, endpoint, submitRequest.payload(), correlationId, traceparent, authType, authToken);
                     log.info("Completed background proxy execution for task {}", submittedTask.id());
-                } catch (Throwable t) {
-
-                    log.error("Fatal failure in background proxy execution for task {}: {}", submittedTask.id(), t.getMessage(), t);
+                } catch (Throwable failure) {
+                    log.error("Fatal failure in background proxy execution for task {}", submittedTask.id(), failure);
+                    try {
+                        persistenceService.markTaskFailedIfInFlight(submittedTask.id(), "Background task execution failed")
+                                .ifPresent(eventPublisher::publishTaskUpdated);
+                    } catch (RuntimeException recoveryFailure) {
+                        log.error("Could not record background failure for task {}", submittedTask.id(), recoveryFailure);
+                    }
                 }
             });
             return new TaskExecutionResponse(submittedTask, true);

@@ -10,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -20,6 +21,8 @@ import java.util.UUID;
  */
 @Service
 public class TaskPersistenceService {
+
+    private static final List<TaskState> IN_FLIGHT_STATES = List.of(TaskState.SUBMITTED, TaskState.WORKING);
 
     private final TaskRepository taskRepository;
     private final AgentRepository agentRepository;
@@ -70,6 +73,21 @@ public class TaskPersistenceService {
     public TaskService.TaskDto updateTaskResult(UUID taskId, TaskState state, Map<String, Object> response, String errorDetail) {
         TaskEntity task = taskRepository.findById(taskId)
                 .orElseThrow(() -> new IllegalStateException("Task not found with ID: " + taskId));
+        return saveTaskResult(task, state, response, errorDetail);
+    }
+
+    /**
+     * Marks a failed worker's task terminal only while it is still in flight.
+     * The entity version protects against concurrent changes between lookup and commit.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public Optional<TaskService.TaskDto> markTaskFailedIfInFlight(UUID taskId, String errorDetail) {
+        return taskRepository.findById(taskId)
+                .filter(task -> IN_FLIGHT_STATES.contains(task.getState()))
+                .map(task -> saveTaskResult(task, TaskState.FAILED, null, errorDetail));
+    }
+
+    private TaskService.TaskDto saveTaskResult(TaskEntity task, TaskState state, Map<String, Object> response, String errorDetail) {
         task.setState(state);
         task.setResponse(response);
         task.setErrorDetail(errorDetail);
@@ -90,19 +108,12 @@ public class TaskPersistenceService {
     }
 
     /**
-     * In-flight states that can only be left behind by a process that halted mid-task.
-     * SUBMITTED: persisted but not yet picked up by the executor.
-     * WORKING: picked up by the background executor, downstream proxy call in progress.
-     */
-    private static final List<TaskState> ORPHANABLE_STATES = List.of(TaskState.SUBMITTED, TaskState.WORKING);
-
-    /**
      * Recovers in-flight tasks left in SUBMITTED or WORKING state across application restarts.
      * Marks orphaned tasks as FAILED with descriptive error context.
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public int recoverOrphanedTasks() {
-        List<TaskEntity> stuckTasks = taskRepository.findByStateIn(ORPHANABLE_STATES);
+        List<TaskEntity> stuckTasks = taskRepository.findByStateIn(IN_FLIGHT_STATES);
         int recovered = 0;
         for (TaskEntity task : stuckTasks) {
             // Capture the original state before overwriting it so the message stays accurate.
