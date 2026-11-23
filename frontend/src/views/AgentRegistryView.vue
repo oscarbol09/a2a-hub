@@ -7,6 +7,8 @@ import { Search, Plus, Zap, CheckCircle2, AlertTriangle, XCircle, Radio } from '
 const store = useAgentStore();
 const showRegisterModal = ref(false);
 const newAgentUrl = ref('');
+const registrationError = ref<string | null>(null);
+let registrationSession = 0;
 
 onMounted(() => {
   store.fetchAgents();
@@ -14,12 +16,25 @@ onMounted(() => {
   store.initWebSocket();
 });
 
+const closeRegisterModal = () => {
+  registrationSession++;
+  registrationError.value = null;
+  showRegisterModal.value = false;
+};
+
 const handleRegister = async () => {
-  if (!newAgentUrl.value) return;
+  if (!newAgentUrl.value || store.loading) return;
+  registrationError.value = null;
+  const session = registrationSession;
   const success = await store.registerAgent(newAgentUrl.value);
+  if (session !== registrationSession) return;
+
   if (success) {
-    showRegisterModal.value = false;
     newAgentUrl.value = '';
+    closeRegisterModal();
+  } else {
+    registrationError.value = store.error;
+    store.error = null;
   }
 };
 </script>
@@ -126,14 +141,17 @@ const handleRegister = async () => {
       role="dialog"
       aria-modal="true"
       aria-labelledby="register-modal-title"
-      @keydown.esc="showRegisterModal = false"
-      @click.self="showRegisterModal = false"
+      @keydown.esc="closeRegisterModal"
+      @click.self="closeRegisterModal"
     >
       <div class="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden" role="document">
         <div class="px-6 py-4 border-b border-gray-100">
           <h2 id="register-modal-title" class="text-lg font-semibold text-gray-900">Register New Agent</h2>
         </div>
         <div class="p-6">
+          <p v-if="registrationError" role="alert" class="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">
+            {{ registrationError }}
+          </p>
           <label for="agent-url-input" class="block text-sm font-medium text-gray-700 mb-2">Agent URL</label>
           <input 
             id="agent-url-input"
@@ -151,7 +169,7 @@ const handleRegister = async () => {
         <div class="px-6 py-4 bg-gray-50 flex justify-end gap-3">
           <button 
             type="button"
-            @click="showRegisterModal = false"
+            @click="closeRegisterModal"
             class="px-4 py-2 text-gray-700 hover:bg-gray-200 rounded-lg font-medium text-sm transition-colors cursor-pointer"
           >
             Cancel
