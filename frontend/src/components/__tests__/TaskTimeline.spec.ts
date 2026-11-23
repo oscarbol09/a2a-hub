@@ -28,11 +28,11 @@ describe('TaskTimeline Component', () => {
     expect(wrapper.find('.bg-white').exists()).toBe(false);
   });
 
-  describe('SUBMITTED State', () => {
-    it('renders loader/spinner, SUBMITTED text, and request payload JSON', () => {
+  describe('Active states', () => {
+    it.each(['SUBMITTED', 'WORKING'])('renders loader, %s text, and request payload JSON', (state) => {
       const task: TaskDto = {
         ...baseTask,
-        state: 'SUBMITTED',
+        state,
       };
 
       const wrapper = mount(TaskTimeline, {
@@ -41,7 +41,7 @@ describe('TaskTimeline Component', () => {
 
       expect(wrapper.text()).toContain('Task Execution');
       expect(wrapper.text()).toContain('ID: task-test-001');
-      expect(wrapper.text()).toContain('SUBMITTED');
+      expect(wrapper.text()).toContain(state);
 
       // State badge styling and spinner loader
       const badge = wrapper.find('.rounded-full.border');

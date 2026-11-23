@@ -12,6 +12,7 @@ const stateConfig = computed(() => {
   
   switch (props.task.state) {
     case 'SUBMITTED':
+    case 'WORKING':
     case 'PENDING':
     case 'RUNNING':
       return {
