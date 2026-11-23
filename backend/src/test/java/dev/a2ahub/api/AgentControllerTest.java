@@ -77,6 +77,22 @@ class AgentControllerTest {
     }
 
     @Test
+    @DisplayName("POST /api/v1/agents - Should reject URLs longer than 512 characters")
+    void shouldRejectOversizedRegistrationUrl() throws Exception {
+        String prefix = "https://example.test/";
+        String url = prefix + "a".repeat(513 - prefix.length());
+        RegisterAgentRequest request = new RegisterAgentRequest(url);
+
+        mockMvc.perform(post("/api/v1/agents")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.details.url").value("URL must not exceed 512 characters"));
+
+        verifyNoInteractions(agentRegistryService);
+    }
+
+    @Test
     @DisplayName("GET /api/v1/agents - Should return paginated list of registered agents")
     void shouldReturnAllAgents() throws Exception {
         Agent agent = new Agent();
