@@ -14,6 +14,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.core.task.AsyncTaskExecutor;
+import org.springframework.dao.TransientDataAccessResourceException;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
@@ -262,6 +263,37 @@ class TaskServiceEndpointTest {
         order.verify(publisher).publishTaskUpdated(argThat(dto -> dto.state().equals("WORKING")));
         order.verify(persistence).updateTaskResult(eq(taskId), eq(TaskState.FAILED), any(), contains(detail));
         order.verify(publisher).publishTaskUpdated(argThat(dto -> dto.state().equals("FAILED") && dto.errorDetail().contains(detail)));
+        server.verify();
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void asyncWorkerPublishesRecoveredFailure(boolean proxyError) {
+        String sensitiveDetail = "internal failure detail";
+        var expectation = server.expect(requestTo("https://registered.example/root/tasks"));
+        if (proxyError) {
+            expectation.andRespond(request -> { throw new AssertionError(sensitiveDetail); });
+        } else {
+            expectation.andRespond(withSuccess("{}", MediaType.APPLICATION_JSON));
+            doThrow(new TransientDataAccessResourceException(sensitiveDetail)).when(persistence)
+                    .updateTaskResult(eq(taskId), eq(TaskState.COMPLETED), any(), isNull());
+        }
+        when(persistence.markTaskFailedIfInFlight(eq(taskId), anyString())).thenAnswer(call ->
+                Optional.of(dto(TaskState.FAILED, null, call.getArgument(1))));
+
+        assertThat(submit(true).task().state()).isEqualTo("SUBMITTED");
+        ArgumentCaptor<Runnable> worker = ArgumentCaptor.forClass(Runnable.class);
+        verify(executor).execute(worker.capture());
+        worker.getValue().run();
+
+        var order = inOrder(persistence, publisher);
+        order.verify(persistence).updateTaskResult(taskId, TaskState.WORKING, null, null);
+        order.verify(publisher).publishTaskUpdated(argThat(task -> task.state().equals("WORKING")));
+        order.verify(persistence).markTaskFailedIfInFlight(eq(taskId), anyString());
+        ArgumentCaptor<TaskService.TaskDto> published = ArgumentCaptor.forClass(TaskService.TaskDto.class);
+        order.verify(publisher).publishTaskUpdated(published.capture());
+        assertThat(published.getValue().state()).isEqualTo("FAILED");
+        assertThat(published.getValue().errorDetail()).isNotBlank().doesNotContain(sensitiveDetail);
         server.verify();
     }
 

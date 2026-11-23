@@ -6,6 +6,8 @@ import dev.a2ahub.agent.AgentRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -224,6 +226,32 @@ class TaskPersistenceServiceTest {
         assertThat(stuck1.getErrorDetail()).contains("Recovered after application restart");
         assertThat(stuck2.getState()).isEqualTo(TaskState.FAILED);
         assertThat(stuck2.getErrorDetail()).contains("Recovered after application restart");
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = TaskState.class, names = {"SUBMITTED", "WORKING"})
+    void marksInFlightTaskFailed(TaskState state) {
+        TaskEntity task = taskInState(state);
+        when(taskRepository.findById(task.getId())).thenReturn(Optional.of(task));
+        when(taskRepository.save(task)).thenReturn(task);
+
+        assertThat(persistenceService.markTaskFailedIfInFlight(task.getId(), "Worker failed"))
+                .hasValueSatisfying(result -> {
+                    assertThat(result.state()).isEqualTo("FAILED");
+                    assertThat(result.errorDetail()).isEqualTo("Worker failed");
+                });
+        assertThat(task.getState()).isEqualTo(TaskState.FAILED);
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = TaskState.class, names = {"COMPLETED", "FAILED", "CANCELLED"})
+    void preservesTerminalTaskDuringWorkerRecovery(TaskState state) {
+        TaskEntity task = taskInState(state);
+        when(taskRepository.findById(task.getId())).thenReturn(Optional.of(task));
+
+        assertThat(persistenceService.markTaskFailedIfInFlight(task.getId(), "Worker failed")).isEmpty();
+        assertThat(task.getState()).isEqualTo(state);
+        verify(taskRepository, never()).save(any());
     }
 
     @Test
