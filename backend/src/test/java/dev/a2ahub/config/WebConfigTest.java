@@ -44,7 +44,7 @@ class WebConfigTest {
         SecurityProperties securityProperties = new SecurityProperties();
         WebConfig webConfig = new WebConfig(securityProperties);
 
-        OncePerRequestFilter filter = webConfig.securityHeadersFilter();
+        OncePerRequestFilter filter = webConfig.securityHeadersFilter().getFilter();
 
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/agents");
         MockHttpServletResponse response = new MockHttpServletResponse();
@@ -70,7 +70,7 @@ class WebConfigTest {
         SecurityProperties securityProperties = new SecurityProperties();
         WebConfig webConfig = new WebConfig(securityProperties);
 
-        OncePerRequestFilter filter = webConfig.securityHeadersFilter();
+        OncePerRequestFilter filter = webConfig.securityHeadersFilter().getFilter();
 
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/swagger-ui/index.html");
         MockHttpServletResponse response = new MockHttpServletResponse();
