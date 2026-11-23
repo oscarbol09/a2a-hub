@@ -35,6 +35,9 @@ class TraceContextFilterTest {
                     "correlationId", "corr-123",
                     "contextId", "ctx-456",
                     "traceparent", "00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01"));
+            assertThat(response.getHeader("X-Correlation-Id")).isEqualTo("corr-123");
+            assertThat(response.getHeader("traceparent"))
+                    .isEqualTo("00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01");
         });
 
         assertThat(MDC.getCopyOfContextMap()).containsEntry("unrelated", "outer").hasSize(1);
@@ -51,6 +54,8 @@ class TraceContextFilterTest {
             assertThat(MDC.get("correlationId")).isNotBlank();
             assertThat(MDC.get("traceparent"))
                     .matches("00-[0-9a-f]{32}-[0-9a-f]{16}-01");
+            assertThat(response.getHeader("X-Correlation-Id")).isEqualTo(MDC.get("correlationId"));
+            assertThat(response.getHeader("traceparent")).isEqualTo(MDC.get("traceparent"));
             assertThat(MDC.get("contextId")).isNull();
         });
 

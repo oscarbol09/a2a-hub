@@ -9,6 +9,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.filter.OncePerRequestFilter;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 
@@ -28,11 +29,13 @@ class WebConfigTest {
         securityProperties.setAllowedOrigins(List.of("http://localhost:5173", "https://hub.a2a.dev"));
 
         WebConfig webConfig = new WebConfig(securityProperties);
-        CorsRegistry registry = new CorsRegistry();
+        var registry = new TestCorsRegistry();
 
         webConfig.addCorsMappings(registry);
 
-        assertThat(registry).isNotNull();
+        CorsConfiguration api = registry.apiConfiguration();
+        assertThat(api.getAllowedOrigins()).containsExactly("http://localhost:5173", "https://hub.a2a.dev");
+        assertThat(api.getExposedHeaders()).containsExactly("X-Correlation-Id", "traceparent");
     }
 
     @Test
@@ -77,5 +80,11 @@ class WebConfigTest {
 
         assertThat(response.getHeader("Content-Security-Policy")).contains("script-src 'self' 'unsafe-inline'");
         verify(filterChain).doFilter(request, response);
+    }
+
+    private static class TestCorsRegistry extends CorsRegistry {
+        CorsConfiguration apiConfiguration() {
+            return getCorsConfigurations().get("/api/**");
+        }
     }
 }
