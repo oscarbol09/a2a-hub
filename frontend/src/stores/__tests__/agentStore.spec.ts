@@ -203,6 +203,17 @@ describe('useAgentStore Pinia Store', () => {
       expect(store.error).toBe('Unauthorized agent unregistration');
     });
 
+    it('prefers the ProblemDetail explanation when an agent has active tasks', async () => {
+      const store = useAgentStore();
+      vi.spyOn(api, 'delete').mockRejectedValueOnce({
+        response: { data: { detail: 'Cannot unregister agent: active tasks exist', message: 'Conflict' } },
+      });
+
+      await store.unregisterAgent('agent-123');
+
+      expect(store.error).toBe('Cannot unregister agent: active tasks exist');
+    });
+
     it('falls back to default error message when unregister fails without specific response message', async () => {
       const store = useAgentStore();
       vi.spyOn(api, 'delete').mockRejectedValueOnce(new Error('Internal server error'));
