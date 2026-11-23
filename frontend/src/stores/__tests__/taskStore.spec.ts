@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { setActivePinia, createPinia } from 'pinia';
+import { flushPromises } from '@vue/test-utils';
 import { useTaskStore } from '../taskStore';
 import { tasksApi, type TaskDto } from '../../services/api';
-import { wsService, type TaskUpdatedEvent } from '../../services/websocket';
+import { wsService, type ConnectionEventHandler, type TaskUpdatedEvent } from '../../services/websocket';
 
 const mockTaskFixture: TaskDto = {
   id: 'task-abc-123',
@@ -19,14 +20,21 @@ const mockTaskFixture: TaskDto = {
 
 describe('useTaskStore Pinia Store', () => {
   let taskUpdateCallback: ((event: TaskUpdatedEvent) => void) | null = null;
+  let connectionCallback: ConnectionEventHandler | null = null;
 
   beforeEach(() => {
     setActivePinia(createPinia());
     vi.clearAllMocks();
     taskUpdateCallback = null;
+    connectionCallback = null;
 
     vi.spyOn(wsService, 'onTaskUpdate').mockImplementation((cb: (event: TaskUpdatedEvent) => void) => {
       taskUpdateCallback = cb;
+      return () => {};
+    });
+    vi.spyOn(wsService, 'onConnectionChange').mockImplementation((cb) => {
+      connectionCallback = cb;
+      cb(false);
       return () => {};
     });
   });
@@ -65,6 +73,68 @@ describe('useTaskStore Pinia Store', () => {
         agentId: 'agent-1',
         payload: { query: 'Analyze data' },
       });
+    });
+
+    it('reconciles a completion broadcast before the asynchronous submit response', async () => {
+      const store = useTaskStore();
+      const completedTask = { ...mockTaskFixture, state: 'COMPLETED', response: { output: 42 } };
+      vi.spyOn(tasksApi, 'submitTask').mockImplementationOnce(async () => {
+        taskUpdateCallback!({
+          type: 'TASK_UPDATED',
+          taskId: mockTaskFixture.id,
+          agentId: mockTaskFixture.agentId,
+          state: 'COMPLETED',
+          timestamp: completedTask.updatedAt,
+        });
+        return { status: 202, data: mockTaskFixture } as any;
+      });
+      const getTask = vi.spyOn(tasksApi, 'getTask').mockResolvedValueOnce({ data: completedTask } as any);
+
+      await store.submitTask('agent-1', { query: 'Analyze data' }, true);
+      await flushPromises();
+
+      expect(getTask).toHaveBeenCalledWith(mockTaskFixture.id);
+      expect(store.currentTask).toEqual(completedTask);
+    });
+
+    it('preserves a terminal result when the initial asynchronous refresh is stale', async () => {
+      const store = useTaskStore();
+      const completedTask = { ...mockTaskFixture, state: 'COMPLETED', response: { output: 42 } };
+      vi.spyOn(tasksApi, 'submitTask').mockResolvedValueOnce({ status: 202, data: mockTaskFixture } as any);
+      let resolveRefresh!: (value: Awaited<ReturnType<typeof tasksApi.getTask>>) => void;
+      const staleRefresh = new Promise<Awaited<ReturnType<typeof tasksApi.getTask>>>((resolve) => {
+        resolveRefresh = resolve;
+      });
+      vi.spyOn(tasksApi, 'getTask')
+        .mockReturnValueOnce(staleRefresh)
+        .mockResolvedValueOnce({ data: completedTask } as any);
+
+      await store.submitTask('agent-1', { query: 'Analyze data' }, true);
+      taskUpdateCallback!({
+        type: 'TASK_UPDATED',
+        taskId: mockTaskFixture.id,
+        agentId: mockTaskFixture.agentId,
+        state: 'COMPLETED',
+        timestamp: completedTask.updatedAt,
+      });
+      await flushPromises();
+      resolveRefresh({ data: { ...mockTaskFixture, state: 'WORKING' } } as any);
+      await flushPromises();
+
+      expect(store.currentTask).toEqual(completedTask);
+    });
+
+    it('refreshes an in-flight task when the WebSocket connects', async () => {
+      const store = useTaskStore();
+      store.currentTask = { ...mockTaskFixture, state: 'WORKING' };
+      const completedTask = { ...mockTaskFixture, state: 'COMPLETED', response: { output: 42 } };
+      const getTask = vi.spyOn(tasksApi, 'getTask').mockResolvedValueOnce({ data: completedTask } as any);
+
+      connectionCallback?.(true);
+      await flushPromises();
+
+      expect(getTask).toHaveBeenCalledWith(mockTaskFixture.id);
+      expect(store.currentTask).toEqual(completedTask);
     });
 
     it('sets error from response data message and re-throws when submitTask fails', async () => {

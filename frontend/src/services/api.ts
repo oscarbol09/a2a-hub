@@ -157,7 +157,8 @@ export interface TaskDto {
 export interface SubmitTaskRequest {
   agentId: string;
   contextId?: string;
-  payload: Record<string, any>;
+  payload: Record<string, unknown>;
+  async?: boolean;
 }
 
 export const tasksApi = {
