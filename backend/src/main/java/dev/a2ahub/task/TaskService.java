@@ -173,8 +173,8 @@ public class TaskService {
             endpoint = agentUrl.endsWith("/") ? agentUrl + "tasks" : agentUrl + "/tasks";
         }
 
-        URI registered = parseTaskUri(agentUrl);
-        URI target = parseTaskUri(endpoint);
+        URI registered = parseTaskUri(agentUrl, null);
+        URI target = parseTaskUri(endpoint, registered);
         if ("https".equalsIgnoreCase(registered.getScheme()) && "http".equalsIgnoreCase(target.getScheme())) {
             throw new IllegalArgumentException("Task endpoint cannot downgrade HTTPS to HTTP");
         }
@@ -189,10 +189,14 @@ public class TaskService {
         return new TaskEndpoint(target.toString(), declaresEndpoint);
     }
 
-    private URI parseTaskUri(String value) {
+    private URI parseTaskUri(String value, URI registered) {
         URI uri;
         try {
-            uri = URI.create(value.trim());
+            String endpoint = value.trim();
+            uri = URI.create(endpoint);
+            if (registered != null && endpoint.startsWith("/") && !endpoint.startsWith("//")) {
+                uri = registered.resolve(uri);
+            }
         } catch (RuntimeException e) {
             // Do not echo untrusted URLs: userinfo or query parameters may contain secrets.
             throw new IllegalArgumentException("Invalid task endpoint URL");

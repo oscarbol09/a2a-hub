@@ -96,6 +96,30 @@ class TaskServiceEndpointTest {
         server.verify();
     }
 
+    static Stream<Arguments> rootRelativeDeclarations() {
+        return Stream.of(
+                Arguments.of(" /api/tasks?mode=fast "),
+                Arguments.of(Map.of("url", "/api/tasks?mode=fast", "protocolBinding", "HTTP+JSON")),
+                Arguments.of(new AgentCard.AgentInterface("/api/tasks?mode=fast", "HTTP+JSON", "1.0")));
+    }
+
+    @ParameterizedTest
+    @MethodSource("rootRelativeDeclarations")
+    void resolvesRootRelativeEndpointAgainstRegisteredOrigin(Object declaration) {
+        agent.setUrl("https://registered.example:8443/root");
+        interfaces(List.of(declaration));
+        String endpoint = "https://registered.example:8443/api/tasks?mode=fast";
+        server.expect(requestTo(endpoint)).andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess("{}", MediaType.APPLICATION_JSON));
+
+        assertThat(submit(false).task().state()).isEqualTo("COMPLETED");
+        var order = inOrder(validator, persistence);
+        order.verify(validator).validateSafeRemoteUrl(agent.getUrl());
+        order.verify(validator).validateSafeRemoteUrl(endpoint);
+        order.verify(persistence).createSubmittedTask(eq(agent), any(), any());
+        server.verify();
+    }
+
     static Stream<Arguments> fallbacks() {
         return Stream.of(Arguments.of("https://registered.example/root", null),
                 Arguments.of("https://registered.example/root/", List.of()),
@@ -156,7 +180,7 @@ class TaskServiceEndpointTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"/relative/tasks", "https://[", "https://registered.example:0/tasks",
+    @ValueSource(strings = {"https://[", "https://registered.example:0/tasks",
             "https://registered.example:65536/tasks", "https://registered.example:bad/tasks",
             "https://registered.example:/tasks", "https:///tasks", "//registered.example/tasks",
             "https://user:secret@registered.example/tasks", "https://registered.example/tasks#fragment",

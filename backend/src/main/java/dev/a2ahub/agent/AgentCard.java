@@ -44,9 +44,8 @@ public record AgentCard(
                 result.add(ai);
             } else if (item instanceof String s) {
                 String value = s.trim();
-                // Recognize schemes and scheme-relative URLs before validation so invalid declarations
-                // cannot silently become legacy protocol labels and trigger the /tasks fallback.
-                result.add(URI_SCHEME.matcher(value).find() || value.startsWith("//")
+                // Keep path and URL declarations separate from legacy protocol labels.
+                result.add(URI_SCHEME.matcher(value).find() || value.startsWith("/")
                         ? new AgentInterface(value, "HTTP+JSON", "1.0")
                         : new AgentInterface(null, s, "1.0"));
             } else if (item instanceof Map<?, ?> m) {
