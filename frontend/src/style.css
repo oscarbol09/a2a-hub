@@ -4,7 +4,7 @@
   :root {
     --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
     --mono: ui-monospace, Consolas, monospace;
-    color-scheme: light dark;
+    color-scheme: light;
   }
 
   body {
