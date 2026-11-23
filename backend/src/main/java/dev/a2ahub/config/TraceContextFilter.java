@@ -19,6 +19,9 @@ import java.util.UUID;
 @Component
 public class TraceContextFilter extends OncePerRequestFilter {
 
+    static final String CORRELATION_ID_HEADER = "X-Correlation-Id";
+    static final String TRACEPARENT_HEADER = "traceparent";
+
     private static final String CORRELATION_ID = "correlationId";
     private static final String CONTEXT_ID = "contextId";
     private static final String TRACEPARENT = "traceparent";
@@ -29,9 +32,11 @@ public class TraceContextFilter extends OncePerRequestFilter {
                                     FilterChain filterChain) throws ServletException, IOException {
         Map<String, String> previousContext = MDC.getCopyOfContextMap();
         try {
-            putOrGenerate(CORRELATION_ID, request.getHeader("X-Correlation-Id"), UUID.randomUUID().toString());
+            putOrGenerate(CORRELATION_ID, request.getHeader(CORRELATION_ID_HEADER), UUID.randomUUID().toString());
             putOrRemove(CONTEXT_ID, request.getHeader("X-Context-Id"));
-            putOrGenerate(TRACEPARENT, request.getHeader("traceparent"), generateW3cTraceparent());
+            putOrGenerate(TRACEPARENT, request.getHeader(TRACEPARENT_HEADER), generateW3cTraceparent());
+            response.setHeader(CORRELATION_ID_HEADER, MDC.get(CORRELATION_ID));
+            response.setHeader(TRACEPARENT_HEADER, MDC.get(TRACEPARENT));
             filterChain.doFilter(request, response);
         } finally {
             MDC.clear();

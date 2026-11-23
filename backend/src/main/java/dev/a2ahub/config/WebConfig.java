@@ -30,6 +30,7 @@ public class WebConfig implements WebMvcConfigurer {
                 .allowedOrigins(origins)
                 .allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
                 .allowedHeaders("*")
+                .exposedHeaders(TraceContextFilter.CORRELATION_ID_HEADER, TraceContextFilter.TRACEPARENT_HEADER)
                 .maxAge(3600);
 
         registry.addMapping("/ws/**")
