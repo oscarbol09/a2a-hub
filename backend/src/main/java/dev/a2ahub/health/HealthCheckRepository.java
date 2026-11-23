@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.ZonedDateTime;
 import java.util.List;
@@ -15,6 +16,7 @@ public interface HealthCheckRepository extends JpaRepository<HealthCheckLog, Lon
     @Query("SELECT h FROM HealthCheckLog h WHERE h.agent.id = :agentId ORDER BY h.checkedAt DESC")
     List<HealthCheckLog> findRecentByAgentId(@Param("agentId") UUID agentId, Pageable pageable);
 
+    @Transactional
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query(value = """
         WITH doomed AS (

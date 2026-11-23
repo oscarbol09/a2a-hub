@@ -22,9 +22,12 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.utility.DockerImageName;
 
 import java.time.ZonedDateTime;
 import java.util.List;
@@ -47,7 +50,8 @@ class AgentDatabaseIntegrationTest {
 
     @Container
     @SuppressWarnings("resource")
-    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("pgvector/pgvector:pg16")
+    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>(
+            DockerImageName.parse("pgvector/pgvector:pg16").asCompatibleSubstituteFor("postgres"))
             .withDatabaseName("a2ahub_test")
             .withUsername("test")
             .withPassword("test");
@@ -263,7 +267,8 @@ class AgentDatabaseIntegrationTest {
     }
 
     @Test
-    @DisplayName("Should execute Flyway V3 chunked batch pruning CTE on health checks")
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    @DisplayName("Should prune health checks in batches without a caller transaction")
     void shouldPruneHealthChecksUsingChunkedCte() {
         Agent agent = new Agent();
         agent.setName("PruningAgent");
@@ -284,32 +289,24 @@ class AgentDatabaseIntegrationTest {
         HealthCheckLog recentLog = new HealthCheckLog(savedAgent, "HEALTHY", 25, null);
         recentLog.setCheckedAt(now);
 
-        healthCheckRepository.saveAllAndFlush(List.of(oldLog1, oldLog2, oldLog3, recentLog));
+        try {
+            healthCheckRepository.saveAllAndFlush(List.of(oldLog1, oldLog2, oldLog3, recentLog));
+            ZonedDateTime cutoff = now.minusDays(1);
+            PageRequest page = PageRequest.of(0, 10);
 
-        // Cutoff is 1 day ago. 3 logs are older than cutoff.
-        ZonedDateTime cutoff = now.minusDays(1);
+            assertThat(healthCheckRepository.deleteBatchOlderThan(cutoff, 2)).isEqualTo(2);
+            assertThat(healthCheckRepository.findRecentByAgentId(savedAgent.getId(), page))
+                    .extracting(HealthCheckLog::getId)
+                    .containsExactly(recentLog.getId(), oldLog3.getId());
 
-        // Batch 1: prune with batchSize = 2
-        int deletedFirstBatch = healthCheckRepository.deleteBatchOlderThan(cutoff, 2);
-        assertThat(deletedFirstBatch).isEqualTo(2);
-
-        // Batch 2: prune remaining (should delete 1)
-        int deletedSecondBatch = healthCheckRepository.deleteBatchOlderThan(cutoff, 2);
-        assertThat(deletedSecondBatch).isEqualTo(1);
-
-        // Batch 3: no more old records to prune
-        int deletedThirdBatch = healthCheckRepository.deleteBatchOlderThan(cutoff, 2);
-        assertThat(deletedThirdBatch).isEqualTo(0);
-
-        // Verify recentLog remains
-        List<HealthCheckLog> remaining = healthCheckRepository.findRecentByAgentId(savedAgent.getId(), PageRequest.of(0, 10));
-        assertThat(remaining).hasSize(1);
-        assertThat(remaining.getFirst().getId()).isEqualTo(recentLog.getId());
-
-        // Cleanup
-        healthCheckRepository.deleteByAgentId(savedAgent.getId());
-        healthCheckRepository.flush();
-        agentRepository.delete(savedAgent);
-        agentRepository.flush();
+            assertThat(healthCheckRepository.deleteBatchOlderThan(cutoff, 2)).isEqualTo(1);
+            assertThat(healthCheckRepository.deleteBatchOlderThan(cutoff, 2)).isZero();
+            assertThat(healthCheckRepository.findRecentByAgentId(savedAgent.getId(), page))
+                    .extracting(HealthCheckLog::getId)
+                    .containsExactly(recentLog.getId());
+        } finally {
+            // The database cascades the agent deletion to any remaining health logs.
+            agentRepository.deleteById(savedAgent.getId());
+        }
     }
 }
