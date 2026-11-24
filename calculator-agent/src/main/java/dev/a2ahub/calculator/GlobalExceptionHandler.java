@@ -6,6 +6,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.core.MethodParameter;
 import org.springframework.http.HttpInputMessage;
 import org.springframework.http.converter.HttpMessageConverter;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.context.request.RequestAttributes;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.WebRequest;
@@ -73,15 +74,28 @@ public class GlobalExceptionHandler extends RequestBodyAdviceAdapter {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
     }
 
-    @ExceptionHandler(Exception.class)
-    public ResponseEntity<Map<String, Object>> handleGenericException(Exception ex, WebRequest request) {
-        log.error("Unhandled exception in Calculator Agent", ex);
-        String message = ex.getMessage() != null ? ex.getMessage() : "Internal server error";
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<Map<String, Object>> handleMalformedJsonException(HttpMessageNotReadableException ex, WebRequest request) {
+        log.warn("Malformed JSON request payload", ex);
 
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("status", "error");
-        response.put("message", message);
-        response.put("result", message);
+        response.put("message", "Malformed JSON request payload");
+        response.put("result", "Malformed JSON request payload");
+        response.put("contextId", contextId(request));
+        response.put("code", 400);
+
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+    }
+
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<Map<String, Object>> handleGenericException(Exception ex, WebRequest request) {
+        log.error("Unhandled exception in Calculator Agent", ex);
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("status", "error");
+        response.put("message", "Internal server error");
+        response.put("result", "Internal server error");
         response.put("contextId", contextId(request));
         response.put("code", 500);
 
