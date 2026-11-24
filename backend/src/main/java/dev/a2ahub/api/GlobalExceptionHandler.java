@@ -2,6 +2,7 @@ package dev.a2ahub.api;
 
 import dev.a2ahub.agent.AgentNotFoundException;
 import dev.a2ahub.orchestration.NoActiveAgentsException;
+import dev.a2ahub.task.TaskNotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -24,6 +25,17 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(AgentNotFoundException.class)
     public ProblemDetail handleAgentNotFound(AgentNotFoundException ex) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+                HttpStatus.NOT_FOUND,
+                ex.getMessage()
+        );
+        problem.setTitle("Not Found");
+        problem.setType(URI.create("about:blank"));
+        return problem;
+    }
+
+    @ExceptionHandler(TaskNotFoundException.class)
+    public ProblemDetail handleTaskNotFound(TaskNotFoundException ex) {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(
                 HttpStatus.NOT_FOUND,
                 ex.getMessage()

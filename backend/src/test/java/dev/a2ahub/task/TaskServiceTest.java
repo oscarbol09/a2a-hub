@@ -96,6 +96,17 @@ class TaskServiceTest {
     }
 
     @Test
+    @DisplayName("Should throw TaskNotFoundException when looking up a non-existent task")
+    void shouldThrowTaskNotFoundWhenTaskMissing() {
+        UUID taskId = UUID.randomUUID();
+        when(taskRepository.findById(taskId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> taskService.findById(taskId))
+                .isInstanceOf(TaskNotFoundException.class)
+                .hasMessage("Task not found with ID: " + taskId);
+    }
+
+    @Test
     void shouldNotDispatchWhenAgentDisappearsDuringAdmission() {
         Agent agent = new Agent();
         agent.setUrl("https://worker.agent.io");
