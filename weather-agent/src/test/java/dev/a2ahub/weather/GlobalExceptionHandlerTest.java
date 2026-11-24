@@ -56,8 +56,8 @@ class GlobalExceptionHandlerTest {
                         .content("{\"query\":\"synthetic\",\"contextId\":\"ctx-body\"}"))
                 .andExpect(status().isInternalServerError())
                 .andExpect(jsonPath("$.status").value("error"))
-                .andExpect(jsonPath("$.result").value("synthetic internal failure"))
-                .andExpect(jsonPath("$.message").value("synthetic internal failure"))
+                .andExpect(jsonPath("$.result").value("Internal server error"))
+                .andExpect(jsonPath("$.message").value("Internal server error"))
                 .andExpect(jsonPath("$.code").value(500))
                 .andExpect(jsonPath("$.contextId").value("ctx-body"));
     }
@@ -71,6 +71,30 @@ class GlobalExceptionHandlerTest {
                         .content("{\"query\":\"synthetic\",\"contextId\":\"ctx-body\"}"))
                 .andExpect(status().isInternalServerError())
                 .andExpect(jsonPath("$.result").value("Internal server error"))
+                .andExpect(jsonPath("$.contextId").value("ctx-header"));
+    }
+
+    @Test
+    void malformedJsonReturnsBadRequestWithSafeMessage() throws Exception {
+        mvc.perform(post("/tasks").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"query\":}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value("error"))
+                .andExpect(jsonPath("$.message").value("Malformed JSON request payload"))
+                .andExpect(jsonPath("$.result").value("Malformed JSON request payload"))
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.contextId").exists());
+    }
+
+    @Test
+    void malformedJsonPrefersHeaderContext() throws Exception {
+        mvc.perform(post("/tasks").header("X-Context-Id", " ctx-header ")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"query\":\"synthetic\""))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value("error"))
+                .andExpect(jsonPath("$.message").value("Malformed JSON request payload"))
+                .andExpect(jsonPath("$.code").value(400))
                 .andExpect(jsonPath("$.contextId").value("ctx-header"));
     }
 
