@@ -6,6 +6,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.core.MethodParameter;
 import org.springframework.http.HttpInputMessage;
 import org.springframework.http.converter.HttpMessageConverter;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.context.request.RequestAttributes;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.WebRequest;
@@ -74,15 +75,28 @@ public class GlobalExceptionHandler extends RequestBodyAdviceAdapter {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
     }
 
-    @ExceptionHandler(Exception.class)
-    public ResponseEntity<Map<String, Object>> handleGenericException(Exception ex, WebRequest request) {
-        log.error("Unhandled exception caught in GlobalExceptionHandler", ex);
-        String message = ex.getMessage() != null ? ex.getMessage() : "Internal server error";
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<Map<String, Object>> handleMalformedJsonException(HttpMessageNotReadableException ex, WebRequest request) {
+        log.warn("Malformed JSON request payload", ex);
 
         Map<String, Object> body = Map.of(
                 "status", "error",
-                "message", message,
-                "result", message,
+                "message", "Malformed JSON request payload",
+                "result", "Malformed JSON request payload",
+                "contextId", contextId(request),
+                "code", 400
+        );
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
+    }
+
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<Map<String, Object>> handleGenericException(Exception ex, WebRequest request) {
+        log.error("Unhandled exception caught in GlobalExceptionHandler", ex);
+
+        Map<String, Object> body = Map.of(
+                "status", "error",
+                "message", "Internal server error",
+                "result", "Internal server error",
                 "contextId", contextId(request),
                 "code", 500
         );
