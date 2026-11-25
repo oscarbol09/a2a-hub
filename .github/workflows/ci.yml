@@ -58,7 +58,7 @@ jobs:
       - name: Compile and Run Unit, Slice & Architecture Tests
         working-directory: ./backend
         run: |
-          if [ -f mvnw ]; then chmod +x mvnw && ./mvnw clean test -B; else mvn clean test -B; fi
+          if [ -f mvnw ]; then chmod +x mvnw && ./mvnw clean verify -B; else mvn clean verify -B; fi
 
       - name: Upload JaCoCo Coverage Report
         uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
@@ -93,7 +93,7 @@ jobs:
 
       - name: Test ${{ matrix.service }} Suite
         working-directory: ./${{ matrix.service }}
-        run: mvn clean test -B
+        run: chmod +x mvnw && ./mvnw clean test -B
 
   # --------------------------------------------------------------------------
   # Gate 4: Frontend Unit Tests, Typecheck & Production Build (Vue 3 + Vite)
