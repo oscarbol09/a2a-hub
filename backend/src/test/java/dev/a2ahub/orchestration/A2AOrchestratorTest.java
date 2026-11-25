@@ -2,6 +2,7 @@ package dev.a2ahub.orchestration;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.a2ahub.agent.Agent;
+import dev.a2ahub.agent.AgentCard;
 import dev.a2ahub.agent.AgentDiscoveryService;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.SystemMessage;
@@ -87,6 +88,27 @@ class A2AOrchestratorTest {
         assertThat(suggestion.getSource()).isEqualTo("LLM_REASONING");
         assertThat(suggestion.isFallback()).isFalse();
         assertThat(suggestion.getConfidenceScore()).isEqualTo(0.95);
+    }
+
+    @Test
+    void includesEscapedSkillMetadataInTheCandidatePrompt() {
+        weatherAgent.setAgentCard(new AgentCard(
+                "WeatherAgent", "Weather service", null, "1.0",
+                List.of(new AgentCard.Skill("alerts&forecast", "Weather <alerts>",
+                        "Provides \"severe\" forecasts", List.of("city&region", "today"))),
+                null, null));
+        when(discoveryService.discoverSemanticWithScores("Find weather alerts", 5))
+                .thenReturn(List.of(new AgentDiscoveryService.ScoredAgent(weatherAgent, 0.94),
+                        new AgentDiscoveryService.ScoredAgent(calculatorAgent, 0.72)));
+        when(chatModel.generate(any(SystemMessage.class), any(UserMessage.class)))
+                .thenReturn(Response.from(AiMessage.from("{\"agentId\":\"" + weatherAgent.getId() + "\"}")));
+
+        assertThat(orchestrator.suggestAgent("Find weather alerts").getAgentId()).isEqualTo(weatherAgent.getId());
+        ArgumentCaptor<UserMessage> prompt = ArgumentCaptor.forClass(UserMessage.class);
+        verify(chatModel).generate(any(SystemMessage.class), prompt.capture());
+        assertThat(prompt.getValue().singleText()).contains("<skills>", "<id>alerts&amp;forecast</id>",
+                "<name>Weather &lt;alerts&gt;</name>", "<description>Provides &quot;severe&quot; forecasts</description>",
+                "<tag>city&amp;region</tag>", "<tag>today</tag>", "<name>CalculatorAgent</name>");
     }
 
     @Test
