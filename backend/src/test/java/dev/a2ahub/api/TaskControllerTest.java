@@ -5,6 +5,7 @@ import dev.a2ahub.agent.AgentNotFoundException;
 import dev.a2ahub.config.WebConfig;
 import dev.a2ahub.security.ApiKeyAuthFilter;
 import dev.a2ahub.security.SecurityProperties;
+import dev.a2ahub.task.TaskNotFoundException;
 import dev.a2ahub.task.TaskService;
 import dev.a2ahub.task.TaskState;
 import dev.a2ahub.task.TaskSummaryDto;
@@ -264,6 +265,23 @@ class TaskControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(taskId.toString()))
                 .andExpect(jsonPath("$.state").value("COMPLETED"));
+
+        verify(taskService).findById(taskId);
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/tasks/{id} - Should return 404 ProblemDetail when task does not exist")
+    void shouldReturn404WhenTaskNotFound() throws Exception {
+        UUID taskId = UUID.randomUUID();
+
+        when(taskService.findById(taskId))
+                .thenThrow(new TaskNotFoundException("Task not found with ID: " + taskId));
+
+        mockMvc.perform(get("/api/v1/tasks/{id}", taskId))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.status").value(404))
+                .andExpect(jsonPath("$.title").value("Not Found"))
+                .andExpect(jsonPath("$.detail").value("Task not found with ID: " + taskId));
 
         verify(taskService).findById(taskId);
     }

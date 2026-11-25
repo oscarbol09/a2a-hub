@@ -1,6 +1,7 @@
 package dev.a2ahub.api;
 
 import dev.a2ahub.agent.AgentNotFoundException;
+import dev.a2ahub.task.TaskNotFoundException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -37,6 +38,20 @@ class GlobalExceptionHandlerTest {
         assertThat(problem.getStatus()).isEqualTo(HttpStatus.NOT_FOUND.value());
         assertThat(problem.getDetail()).isEqualTo("Agent not found with id: " + agentId);
         assertThat(problem.getTitle()).isEqualTo("Not Found");
+    }
+
+    @Test
+    @DisplayName("Should translate TaskNotFoundException to RFC 7807 ProblemDetail with 404 NOT_FOUND")
+    void shouldHandleTaskNotFound() {
+        UUID taskId = UUID.randomUUID();
+        TaskNotFoundException ex = new TaskNotFoundException("Task not found with ID: " + taskId);
+
+        ProblemDetail problem = exceptionHandler.handleTaskNotFound(ex);
+
+        assertThat(problem.getStatus()).isEqualTo(HttpStatus.NOT_FOUND.value());
+        assertThat(problem.getDetail()).isEqualTo("Task not found with ID: " + taskId);
+        assertThat(problem.getTitle()).isEqualTo("Not Found");
+        assertThat(problem.getType().toString()).isEqualTo("about:blank");
     }
 
     @Test

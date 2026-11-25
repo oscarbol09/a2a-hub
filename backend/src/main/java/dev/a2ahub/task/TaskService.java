@@ -302,7 +302,7 @@ public class TaskService {
     @Transactional(readOnly = true)
     public TaskDto findById(UUID id) {
         TaskEntity task = taskRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Task not found with ID: " + id));
+                .orElseThrow(() -> new TaskNotFoundException("Task not found with ID: " + id));
         return toDto(task);
     }
 
