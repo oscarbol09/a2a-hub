@@ -19,3 +19,5 @@ spring:
 gemini:
   api-key: ${GEMINI_API_KEY:}
   model: ${GEMINI_MODEL:gemini-3.8-flash}
+  timeout-seconds: ${GEMINI_MAX_SECONDS:15}
+  max-retries : ${GEMINI_MAX_RETRIES:1}
