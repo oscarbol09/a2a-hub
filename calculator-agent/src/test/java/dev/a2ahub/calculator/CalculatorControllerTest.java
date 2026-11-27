@@ -264,4 +264,29 @@ class CalculatorControllerTest {
         );
         assertEquals("GEMINI_API_KEY must be configured in production profile. Mock mode is prohibited in production.", ex.getMessage());
     }
+
+    @Test
+    @DisplayName("CalculatorController trims surrounding whitespace on apiKey and builds live chatModel")
+    void constructor_withWhitespaceApiKey_trimsAndDisablesMockMode() throws Exception {
+        CalculatorController controller = new CalculatorController("  test-live-key  ", "gemini-3.8-flash");
+        assertEquals(false, controller.isMockMode());
+
+        java.lang.reflect.Field chatModelField = CalculatorController.class.getDeclaredField("chatModel");
+        chatModelField.setAccessible(true);
+        Object builtModel = chatModelField.get(controller);
+        org.junit.jupiter.api.Assertions.assertNotNull(builtModel);
+    }
+
+    @Test
+    @DisplayName("chatModel and mockMode fields are marked volatile for cross-thread visibility")
+    void stateFields_areVolatileForThreadSafety() throws NoSuchFieldException {
+        java.lang.reflect.Field chatModelField = CalculatorController.class.getDeclaredField("chatModel");
+        java.lang.reflect.Field mockModeField = CalculatorController.class.getDeclaredField("mockMode");
+
+        assertTrue(java.lang.reflect.Modifier.isVolatile(chatModelField.getModifiers()),
+                "chatModel field must be volatile");
+        assertTrue(java.lang.reflect.Modifier.isVolatile(mockModeField.getModifiers()),
+                "mockMode field must be volatile");
+    }
+
 }

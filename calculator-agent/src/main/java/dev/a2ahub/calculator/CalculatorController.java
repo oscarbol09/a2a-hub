@@ -23,6 +23,7 @@ import org.springframework.core.env.Environment;
 import org.springframework.lang.Nullable;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
@@ -33,6 +34,8 @@ public class CalculatorController {
 
     private static final Logger log = LoggerFactory.getLogger(CalculatorController.class);
     private static final int DEFAULT_SERVER_PORT = 8082;
+    private static final long DEFAULT_TIMEOUT_SECONDS = 15L;
+    private static final int DEFAULT_MAX_RETRIES = 1;
 
     private static final String SYSTEM_PROMPT = """
             You are CalculatorAgent, a specialized mathematical calculator and numerical reasoning assistant.
@@ -44,8 +47,8 @@ public class CalculatorController {
             4. Provide accurate, clear calculations and mathematical reasoning.
             """;
 
-    private GoogleAiGeminiChatModel chatModel;
-    private boolean mockMode;
+    private  volatile GoogleAiGeminiChatModel chatModel;
+    private volatile boolean mockMode;
     private final Environment env;
     private final String apiKey;
     private final String configuredBaseUrl;
@@ -56,7 +59,10 @@ public class CalculatorController {
             @Value("${gemini.model:gemini-3.8-flash}") String modelName,
             @Autowired(required = false) GoogleAiGeminiChatModel chatModel,
             @Autowired(required = false) Environment env,
-            @Value("${a2a.agent.base-url:}") String configuredBaseUrl) {
+            @Value("${a2a.agent.base-url:}") String configuredBaseUrl,
+            @Value("${gemini.timeout-seconds:15}")long timeoutSeconds,
+            @Value("${gemini.max-retries:1}") int maxRetries)
+            {
         this.apiKey = apiKey;
         this.env = env;
         if (chatModel != null) {
@@ -67,8 +73,11 @@ public class CalculatorController {
             this.mockMode = true;
         } else {
             this.chatModel = GoogleAiGeminiChatModel.builder()
-                    .apiKey(apiKey)
+                    .apiKey(apiKey.trim())
                     .modelName(modelName)
+                    .temperature(0.0)
+                    .timeout(Duration.ofSeconds(timeoutSeconds))
+                    .maxRetries(maxRetries)
                     .build();
             this.mockMode = false;
         }
@@ -76,15 +85,25 @@ public class CalculatorController {
     }
 
     public CalculatorController(String apiKey, String modelName) {
-        this(apiKey, modelName, null, null, "");
+        this(apiKey, modelName, null, null, "",DEFAULT_TIMEOUT_SECONDS,DEFAULT_MAX_RETRIES);
     }
 
     public CalculatorController(String apiKey, String modelName, GoogleAiGeminiChatModel chatModel) {
-        this(apiKey, modelName, chatModel, null, "");
+        this(apiKey, modelName, chatModel, null, "",DEFAULT_TIMEOUT_SECONDS,DEFAULT_MAX_RETRIES);
     }
 
     public CalculatorController(String apiKey, String modelName, GoogleAiGeminiChatModel chatModel, Environment env) {
-        this(apiKey, modelName, chatModel, env, "");
+        this(apiKey, modelName, chatModel, env, "",DEFAULT_TIMEOUT_SECONDS,DEFAULT_MAX_RETRIES);
+    }
+
+    public CalculatorController(
+            String apiKey,
+            String modelName,
+            GoogleAiGeminiChatModel chatModel,
+            Environment env,
+            String configuredBaseUrl
+    ){
+        this(apiKey, modelName, chatModel, env,configuredBaseUrl,DEFAULT_TIMEOUT_SECONDS,DEFAULT_MAX_RETRIES);
     }
 
     @PostConstruct
