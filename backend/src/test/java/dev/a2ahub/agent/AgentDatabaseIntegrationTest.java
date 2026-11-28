@@ -30,6 +30,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -141,6 +142,31 @@ class AgentDatabaseIntegrationTest {
     }
 
     @Test
+    void shouldLimitLegacyTaskHistoryWithoutChangingTimestampOrder() {
+        UUID originalAgentId = UUID.randomUUID();
+        List<TaskEntity> history = new ArrayList<>();
+        for (int i = 1; i <= 51; i++) {
+            TaskEntity task = new TaskEntity();
+            task.setId(new UUID(0L, i));
+            task.setCreatedAt(ZonedDateTime.parse("2025-01-01T00:00:00Z").plusSeconds(52 - i));
+            task.setOriginalAgentId(originalAgentId);
+            task.setOriginalAgentName("UnregisteredHistoryAgent");
+            task.setState(TaskState.COMPLETED);
+            task.setRequest(Map.of("input", "test"));
+            history.add(task);
+        }
+        taskRepository.saveAllAndFlush(history);
+
+        List<TaskEntity> latest = taskRepository.findByAgentIdOrderByCreatedAtDesc(
+                originalAgentId, PageRequest.of(0, 50));
+
+        assertThat(latest).hasSize(50);
+        assertThat(latest.getFirst().getId()).isEqualTo(new UUID(0L, 1));
+        assertThat(latest.getLast().getId()).isEqualTo(new UUID(0L, 50));
+        assertThat(latest).allMatch(task -> task.getAgent() == null);
+    }
+
+    @Test
     @DisplayName("Should persist and retrieve health check entries and tasks")
     void shouldPersistHealthChecksAndTasks() {
         Agent agent = new Agent();
@@ -170,7 +196,7 @@ class AgentDatabaseIntegrationTest {
         TaskEntity savedTask = taskRepository.saveAndFlush(task);
         assertThat(savedTask.getId()).isNotNull();
 
-        List<TaskEntity> tasks = taskRepository.findByAgentIdOrderByCreatedAtDesc(savedAgent.getId());
+        List<TaskEntity> tasks = taskRepository.findByAgentIdOrderByCreatedAtDesc(savedAgent.getId(), PageRequest.of(0, 50));
         assertThat(tasks).hasSize(1);
         assertThat(tasks.getFirst().getState()).isEqualTo(TaskState.WORKING);
 
