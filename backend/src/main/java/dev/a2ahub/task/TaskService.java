@@ -39,6 +39,8 @@ import java.util.UUID;
 public class TaskService {
 
     private static final Logger log = LoggerFactory.getLogger(TaskService.class);
+    private static final int MAX_ERROR_DETAIL_LENGTH = 1024;
+    private static final String TRUNCATED_ERROR_SUFFIX = "... [truncated]";
 
     private final TaskRepository taskRepository;
     private final AgentRepository agentRepository;
@@ -275,17 +277,18 @@ public class TaskService {
                 }
             }
         } catch (ResourceAccessException e) {
-            log.warn("Downstream agent {} connection/read timeout for task {}: {}", agentName, taskId, e.getMessage());
             finalState = TaskState.FAILED;
-            errorMessage = "Agent connection/read timeout: " + e.getMessage();
+            errorMessage = boundedErrorMessage("Agent connection/read timeout: " + e.getMessage());
+            log.warn("Downstream agent {} connection/read timeout for task {}: {}", agentName, taskId, errorMessage);
         } catch (RestClientResponseException e) {
-            log.warn("Downstream agent {} returned HTTP {} for task {}: {}", agentName, e.getStatusCode(), taskId, e.getResponseBodyAsString());
             finalState = TaskState.FAILED;
-            errorMessage = "Agent returned HTTP " + e.getStatusCode() + ": " + e.getResponseBodyAsString();
+            errorMessage = boundedErrorMessage("Agent returned HTTP " + e.getStatusCode() + ": " + e.getResponseBodyAsString());
+            log.warn("Downstream agent {} returned HTTP {} for task {}: {}", agentName, e.getStatusCode(), taskId, errorMessage);
         } catch (Exception e) {
-            log.error("Unexpected failure proxying task {} to agent {}: {}", taskId, agentName, e.getMessage(), e);
             finalState = TaskState.FAILED;
-            errorMessage = e.getMessage();
+            errorMessage = boundedErrorMessage(e.getMessage());
+            // A throwable's message would repeat the unbounded downstream detail in the stack trace.
+            log.error("Unexpected failure proxying task {} to agent {} ({}): {}", taskId, agentName, e.getClass().getSimpleName(), errorMessage);
         }
 
         // Step 2: Persist final task state in a short transaction (< 2ms) via Spring proxy
@@ -313,11 +316,22 @@ public class TaskService {
                 .toList();
     }
 
+    private static String boundedErrorMessage(String message) {
+        if (message == null || message.length() <= MAX_ERROR_DETAIL_LENGTH) {
+            return message;
+        }
+        int end = MAX_ERROR_DETAIL_LENGTH - TRUNCATED_ERROR_SUFFIX.length();
+        if (Character.isHighSurrogate(message.charAt(end - 1))) {
+            end--;
+        }
+        return message.substring(0, end) + TRUNCATED_ERROR_SUFFIX;
+    }
+
     private String downstreamErrorMessage(Map<String, Object> responseBody) {
         for (String key : List.of("result", "error", "message")) {
             Object detail = responseBody.get(key);
             if (detail != null) {
-                return String.valueOf(detail);
+                return boundedErrorMessage(String.valueOf(detail));
             }
         }
         return "Downstream agent returned status: error";
