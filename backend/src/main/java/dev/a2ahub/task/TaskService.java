@@ -308,7 +308,7 @@ public class TaskService {
 
     @Transactional(readOnly = true)
     public List<TaskDto> findByAgentId(UUID agentId) {
-        return taskRepository.findByAgentIdOrderByCreatedAtDesc(agentId).stream()
+        return taskRepository.findByAgentIdOrderByCreatedAtDesc(agentId, PageRequest.of(0, 50)).stream()
                 .map(this::toDto)
                 .toList();
     }

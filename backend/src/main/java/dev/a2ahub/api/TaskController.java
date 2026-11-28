@@ -72,9 +72,6 @@ public class TaskController {
         }
 
         List<TaskService.TaskDto> list = taskService.findByAgentId(agentId);
-        if (list.size() > 50) {
-            list = list.subList(0, 50);
-        }
         return ResponseEntity.ok(list);
     }
 }

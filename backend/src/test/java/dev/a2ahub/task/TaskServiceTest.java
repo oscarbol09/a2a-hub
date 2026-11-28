@@ -14,10 +14,12 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.core.task.SimpleAsyncTaskExecutor;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.MediaType;
 import org.springframework.web.client.RestClient;
 
 import java.net.URI;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -77,6 +79,25 @@ class TaskServiceTest {
                 mock(RestClient.class),
                 new SimpleAsyncTaskExecutor()
         );
+    }
+
+    @Test
+    void shouldLimitLegacyHistoryInTheRepository() {
+        UUID originalAgentId = UUID.randomUUID();
+        TaskEntity task = new TaskEntity();
+        task.setOriginalAgentId(originalAgentId);
+        task.setOriginalAgentName("UnregisteredAgent");
+        task.setState(TaskState.COMPLETED);
+        when(taskRepository.findByAgentIdOrderByCreatedAtDesc(originalAgentId, PageRequest.of(0, 50)))
+                .thenReturn(List.of(task));
+
+        List<TaskService.TaskDto> result = taskService.findByAgentId(originalAgentId);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.getFirst().agentId()).isEqualTo(originalAgentId);
+        assertThat(result.getFirst().agentName()).isEqualTo("UnregisteredAgent");
+        verify(taskRepository).findByAgentIdOrderByCreatedAtDesc(originalAgentId, PageRequest.of(0, 50));
+        verifyNoMoreInteractions(taskRepository);
     }
 
     @Test

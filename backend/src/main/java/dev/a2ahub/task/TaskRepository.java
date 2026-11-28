@@ -13,7 +13,7 @@ import java.util.UUID;
 public interface TaskRepository extends JpaRepository<TaskEntity, UUID> {
 
     @Query("SELECT t FROM TaskEntity t WHERE t.originalAgentId = :agentId ORDER BY t.createdAt DESC")
-    List<TaskEntity> findByAgentIdOrderByCreatedAtDesc(@Param("agentId") UUID agentId);
+    List<TaskEntity> findByAgentIdOrderByCreatedAtDesc(@Param("agentId") UUID agentId, Pageable pageable);
 
     List<TaskEntity> findByState(TaskState state);
 
